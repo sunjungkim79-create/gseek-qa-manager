@@ -684,14 +684,18 @@ function switchTab(tab) {
 }
 
 /* ── FLOW TASKS (localStorage) ───────────── */
-const FLOW_KEY = 'qa_flow_tasks';
 let flowFilter = 'all';
+let flowCache = [];
 
-function loadFlowTasks() {
-  try { return JSON.parse(localStorage.getItem(FLOW_KEY) || '[]'); } catch { return []; }
-}
-function saveFlowTasks(tasks) {
-  localStorage.setItem(FLOW_KEY, JSON.stringify(tasks));
+/* ── FLOW TASKS (Supabase) ───────────────── */
+async function fetchFlowTasks() {
+  try {
+    const all = await sbGet('flow_tasks?order=created_at.desc');
+    flowCache = all || [];
+  } catch(e) {
+    flowCache = [];
+    toast('Flow 업무 로딩 실패: ' + e.message, true);
+  }
 }
 function toggleFlowForm() {
   const form = document.getElementById('flowForm');
@@ -699,39 +703,47 @@ function toggleFlowForm() {
   if (open) document.getElementById('flowTitle').focus();
   else { document.getElementById('flowTitle').value = ''; document.getElementById('flowAssignee').value = ''; document.getElementById('flowLink').value = ''; document.getElementById('flowDetail').value = ''; }
 }
-function saveFlowTask() {
+async function saveFlowTask() {
   const title = document.getElementById('flowTitle').value.trim();
   if (!title) { document.getElementById('flowTitle').focus(); return; }
   const assignee = document.getElementById('flowAssignee').value.trim();
-  const detail = document.getElementById('flowDetail').value.trim();
-  const tasks = loadFlowTasks();
   const link = document.getElementById('flowLink').value.trim();
-  tasks.unshift({ id: 'ft-' + Date.now(), title, assignee, link, detail, status: 'open', created: new Date().toLocaleDateString('ko') });
-  saveFlowTasks(tasks);
-  toggleFlowForm();
-  renderFlowList();
+  const detail = document.getElementById('flowDetail').value.trim();
+  const task = { id: 'ft-' + Date.now(), title, assignee, link, detail, status: 'open', created: new Date().toLocaleDateString('ko') };
+  try {
+    await sbPost('flow_tasks', task);
+    toggleFlowForm();
+    await renderFlowList();
+  } catch(e) { toast('저장 실패: ' + e.message, true); }
 }
 function setFlowFilter(f) {
   flowFilter = f;
   ['All','Open','Done'].forEach(k => document.getElementById('fc'+k).classList.toggle('active', f === k.toLowerCase()));
   renderFlowList();
 }
-function toggleFlowTask(id) {
-  const tasks = loadFlowTasks();
-  const t = tasks.find(x => x.id === id);
-  if (t) { t.status = t.status === 'done' ? 'open' : 'done'; saveFlowTasks(tasks); renderFlowList(); }
+async function toggleFlowTask(id) {
+  const t = flowCache.find(x => x.id === id);
+  if (!t) return;
+  const newStatus = t.status === 'done' ? 'open' : 'done';
+  try {
+    await sbPatch('flow_tasks', 'id=eq.' + id, { status: newStatus });
+    t.status = newStatus;
+    renderFlowList();
+  } catch(e) { toast('상태 변경 실패: ' + e.message, true); }
 }
-function deleteFlowTask(id) {
-  const tasks = loadFlowTasks().filter(x => x.id !== id);
-  saveFlowTasks(tasks);
-  renderFlowList();
+async function deleteFlowTask(id) {
+  try {
+    await sbDelete('flow_tasks', 'id=eq.' + id);
+    flowCache = flowCache.filter(x => x.id !== id);
+    renderFlowList();
+  } catch(e) { toast('삭제 실패: ' + e.message, true); }
 }
+
 /* ── FLOW MODAL ──────────────────────────── */
 let flowModalId = null;
 
 function openFlowModal(id) {
-  const tasks = loadFlowTasks();
-  const t = tasks.find(x => x.id === id);
+  const t = flowCache.find(x => x.id === id);
   if (!t) return;
   flowModalId = id;
   document.getElementById('fmTitle').value    = t.title    || '';
@@ -753,47 +765,57 @@ function updateFlowModalStatusUI(status) {
     btn.textContent = '완료로 전환';
   }
 }
-function toggleFlowModalStatus() {
-  const tasks = loadFlowTasks();
-  const t = tasks.find(x => x.id === flowModalId);
+async function toggleFlowModalStatus() {
+  const t = flowCache.find(x => x.id === flowModalId);
   if (!t) return;
-  t.status = t.status === 'done' ? 'open' : 'done';
-  saveFlowTasks(tasks);
-  updateFlowModalStatusUI(t.status);
-  renderFlowList();
+  const newStatus = t.status === 'done' ? 'open' : 'done';
+  try {
+    await sbPatch('flow_tasks', 'id=eq.' + flowModalId, { status: newStatus });
+    t.status = newStatus;
+    updateFlowModalStatusUI(newStatus);
+    renderFlowList();
+  } catch(e) { toast('상태 변경 실패: ' + e.message, true); }
 }
-function saveFlowTaskEdit() {
+async function saveFlowTaskEdit() {
   const title = document.getElementById('fmTitle').value.trim();
   if (!title) { document.getElementById('fmTitle').focus(); return; }
-  const tasks = loadFlowTasks();
-  const t = tasks.find(x => x.id === flowModalId);
-  if (!t) return;
-  t.title    = title;
-  t.assignee = document.getElementById('fmAssignee').value.trim();
-  t.link     = document.getElementById('fmLink').value.trim();
-  t.detail   = document.getElementById('fmDetail').value.trim();
-  saveFlowTasks(tasks);
-  renderFlowList();
-  closeFlowModal();
-  toast('업무 수정 완료');
+  const patch = {
+    title,
+    assignee: document.getElementById('fmAssignee').value.trim(),
+    link:     document.getElementById('fmLink').value.trim(),
+    detail:   document.getElementById('fmDetail').value.trim(),
+  };
+  try {
+    await sbPatch('flow_tasks', 'id=eq.' + flowModalId, patch);
+    const t = flowCache.find(x => x.id === flowModalId);
+    if (t) Object.assign(t, patch);
+    renderFlowList();
+    closeFlowModal();
+    toast('업무 수정 완료');
+  } catch(e) { toast('수정 실패: ' + e.message, true); }
 }
-function deleteFlowTaskFromModal() {
+async function deleteFlowTaskFromModal() {
   if (!confirm('이 업무를 삭제하시겠습니까?')) return;
-  const tasks = loadFlowTasks().filter(x => x.id !== flowModalId);
-  saveFlowTasks(tasks);
-  renderFlowList();
-  closeFlowModal();
+  try {
+    await sbDelete('flow_tasks', 'id=eq.' + flowModalId);
+    flowCache = flowCache.filter(x => x.id !== flowModalId);
+    renderFlowList();
+    closeFlowModal();
+  } catch(e) { toast('삭제 실패: ' + e.message, true); }
 }
 function closeFlowModal() {
   document.getElementById('flowModal').classList.remove('show');
   flowModalId = null;
 }
 
-function renderFlowList() {
-  const tasks = loadFlowTasks();
-  const filtered = flowFilter === 'all' ? tasks : tasks.filter(t => t.status === flowFilter);
+async function renderFlowList() {
   const list = document.getElementById('flowList');
   if (!list) return;
+  if (!flowCache.length) {
+    list.innerHTML = `<div style="padding:10px 12px;color:rgba(255,255,255,.3);font-size:12px;">로딩 중…</div>`;
+    await fetchFlowTasks();
+  }
+  const filtered = flowFilter === 'all' ? flowCache : flowCache.filter(t => t.status === flowFilter);
   if (!filtered.length) {
     list.innerHTML = `<div class="flow-empty-flow">등록된 업무가 없습니다.<br>Flow에서 나를 언급한 업무를 추가하세요.</div>`;
     return;
