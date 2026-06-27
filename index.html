@@ -574,8 +574,13 @@ function renderReportList(reports, findings) {
     const vc = r.verdict === 'FAIL' ? 'ri-fail' : r.verdict === 'CONDITIONAL_PASS' ? 'ri-cond' : 'ri-pass';
     const vt = r.verdict === 'FAIL' ? '🔴 FAIL' : r.verdict === 'CONDITIONAL_PASS' ? '🟡 조건부' : '🟢 PASS';
     const active = currentReport && currentReport.id === r.id ? ' active' : '';
+    const repoLabel = r.repo === 'firb-enterprise' ? 'enterprise' : 'user';
+    const repoBg = r.repo === 'firb-enterprise' ? 'rgba(124,58,237,.35)' : 'rgba(59,82,232,.3)';
     return `<div class="report-item${active}" onclick="loadReport('${r.id}')">
-      <div class="ri-date">${r.date} <span class="ri-badge ${vc}">${vt}</span></div>
+      <div class="ri-date">${r.date}
+        <span class="ri-badge" style="background:${repoBg};color:#fff;font-size:9px">${repoLabel}</span>
+        <span class="ri-badge ${vc}">${vt}</span>
+      </div>
       <div class="ri-period">${r.period}</div>
       <div class="ri-stats">
         ${s.high  ? `<span class="ri-badge" style="background:rgba(220,38,38,.2);color:#FCA5A5">H ${s.high}</span>` : ''}
