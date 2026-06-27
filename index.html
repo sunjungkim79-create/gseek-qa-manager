@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>QA Manager — GSEEK</title>
+<style>
+:root {
+  --sidebar-bg:   #18202F;
+  --sidebar-txt:  rgba(255,255,255,.75);
+  --sidebar-head: #FFFFFF;
+  --sidebar-act:  rgba(59,82,232,.22);
+  --sidebar-bdr:  rgba(255,255,255,.08);
+  --ground:  #EAEDF4;
+  --surface: #FFFFFF;
+  --text:    #18202F;
+  --text2:   #5A6379;
+  --accent:  #3B52E8;
+  --border:  #CDD1DE;
+  --high:    #DC2626; --high-bg: #FEF2F2;
+  --med:     #D97706; --med-bg:  #FFFBEB;
+  --pass:    #059669;
+  --fp:      #7C3AED;
+  --r: 6px;
+}
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; font-family:'Apple SD Gothic Neo','Malgun Gothic',-apple-system,system-ui,sans-serif; font-size:14px; }
+body { display:flex; background:var(--ground); color:var(--text); overflow:hidden; }
+button { cursor:pointer; font:inherit; border:none; background:none; }
+input,textarea,select { font:inherit; }
+a { color:inherit; text-decoration:none; }
+code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,0,.07); padding:1px 5px; border-radius:3px; }
+
+/* ── SETUP SCREEN ─────────────────────── */
+#setupScreen {
+  position:fixed; inset:0; background:var(--ground);
+  display:flex; align-items:center; justify-content:center; z-index:1000;
+}
+.setup-box {
+  background:var(--surface); border:1px solid var(--border); border-radius:12px;
+  padding:36px 40px; width:460px; max-width:95vw;
+}
+.setup-box h2 { font-size:18px; font-weight:800; margin-bottom:6px; }
+.setup-box p  { font-size:13px; color:var(--text2); margin-bottom:24px; line-height:1.6; }
+.setup-field { margin-bottom:14px; }
+.setup-field label { display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); margin-bottom:5px; }
+.setup-field input {
+  width:100%; border:1px solid var(--border); border-radius:4px; padding:9px 12px;
+  font-size:13px; outline:none; transition:border-color .15s;
+}
+.setup-field input:focus { border-color:var(--accent); }
+.setup-save {
+  width:100%; background:var(--accent); color:#fff; border-radius:6px;
+  padding:10px; font-size:14px; font-weight:700; margin-top:8px;
+  transition:opacity .12s;
+}
+.setup-save:hover { opacity:.88; }
+.setup-hint { margin-top:16px; font-size:11px; color:var(--text2); line-height:1.6; }
+.setup-hint a { color:var(--accent); }
+
+/* ── SIDEBAR ──────────────────────────── */
+.sidebar {
+  width:272px; flex-shrink:0; background:var(--sidebar-bg);
+  display:flex; flex-direction:column; height:100vh; overflow:hidden;
+}
+.sb-head {
+  padding:18px 16px 12px; border-bottom:1px solid var(--sidebar-bdr); flex-shrink:0;
+}
+.sb-title {
+  font-size:15px; font-weight:800; color:var(--sidebar-head); letter-spacing:-.01em;
+  margin-bottom:10px; display:flex; align-items:center; gap:7px;
+}
+.sb-dot { width:8px; height:8px; border-radius:50%; background:var(--accent); flex-shrink:0; }
+.sb-author-row { display:flex; align-items:center; gap:6px; }
+.sb-author-label { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--sidebar-txt); white-space:nowrap; }
+.sb-author-input {
+  flex:1; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12);
+  border-radius:4px; padding:5px 8px; font-size:12px; color:#fff; outline:none; min-width:0;
+}
+.sb-author-input::placeholder { color:rgba(255,255,255,.3); }
+.sb-author-input:focus { border-color:rgba(59,82,232,.6); }
+
+.sb-tabs {
+  display:flex; border-bottom:1px solid var(--sidebar-bdr); flex-shrink:0;
+}
+.sb-tab {
+  flex:1; padding:9px 4px; font-size:11px; font-weight:700; letter-spacing:.04em;
+  text-transform:uppercase; color:var(--sidebar-txt); text-align:center;
+  border-bottom:2px solid transparent; transition:all .12s; cursor:pointer;
+}
+.sb-tab:hover { color:var(--sidebar-head); }
+.sb-tab.active { color:#fff; border-bottom-color:var(--accent); }
+
+.sb-panel { flex:1; overflow-y:auto; }
+.sb-panel::-webkit-scrollbar { width:4px; }
+.sb-panel::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:2px; }
+
+/* 리포트 목록 */
+.report-item {
+  padding:11px 16px; cursor:pointer; border-left:3px solid transparent;
+  border-bottom:1px solid var(--sidebar-bdr); transition:background .12s;
+}
+.report-item:hover { background:rgba(255,255,255,.05); }
+.report-item.active { background:var(--sidebar-act); border-left-color:var(--accent); }
+.ri-date { font-size:11px; font-weight:700; color:var(--sidebar-head); letter-spacing:.02em; display:flex; align-items:center; gap:7px; }
+.ri-period { font-size:10px; color:var(--sidebar-txt); margin:2px 0 5px; }
+.ri-stats { display:flex; gap:5px; flex-wrap:wrap; }
+.ri-badge { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; }
+.ri-fail { background:rgba(220,38,38,.25); color:#FCA5A5; }
+.ri-cond { background:rgba(217,119,6,.25); color:#FCD34D; }
+.ri-pass { background:rgba(5,150,105,.2); color:#6EE7B7; }
+
+/* 오탐 레지스트리 탭 */
+.fp-empty { padding:24px 16px; font-size:12px; color:rgba(255,255,255,.3); text-align:center; }
+.fp-item {
+  padding:10px 14px; border-bottom:1px solid var(--sidebar-bdr);
+}
+.fp-file { font-size:10px; font-family:monospace; color:rgba(255,255,255,.5); margin-bottom:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fp-title { font-size:11px; color:rgba(255,255,255,.8); font-weight:600; margin-bottom:4px; line-height:1.4; }
+.fp-reason { font-size:10px; color:rgba(255,255,255,.4); line-height:1.4; }
+.fp-del {
+  float:right; font-size:14px; color:rgba(255,255,255,.25); cursor:pointer;
+  line-height:1; padding:2px; transition:color .12s; margin-top:-2px;
+}
+.fp-del:hover { color:#FCA5A5; }
+
+/* 사이드바 하단 설정 버튼 */
+.sb-footer {
+  padding:10px 16px; border-top:1px solid var(--sidebar-bdr); flex-shrink:0;
+  display:flex; gap:8px;
+}
+.sb-btn {
+  flex:1; font-size:11px; font-weight:600; padding:6px 8px; border-radius:4px;
+  background:rgba(255,255,255,.07); color:rgba(255,255,255,.55); text-align:center;
+  transition:all .12s; cursor:pointer;
+}
+.sb-btn:hover { background:rgba(255,255,255,.12); color:#fff; }
+
+/* ── MAIN ─────────────────────────────── */
+.main { flex:1; display:flex; flex-direction:column; overflow:hidden; height:100vh; }
+
+.main-toolbar {
+  background:var(--surface); border-bottom:1px solid var(--border);
+  padding:10px 20px; display:flex; align-items:center; gap:8px;
+  flex-shrink:0; flex-wrap:wrap;
+}
+.filter-label { font-size:11px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--text2); }
+.filter-btn {
+  padding:4px 10px; border-radius:20px; font-size:12px; font-weight:600;
+  background:var(--ground); color:var(--text2); border:1px solid var(--border); transition:all .12s;
+}
+.filter-btn:hover,.filter-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.filter-sep { width:1px; height:18px; background:var(--border); flex-shrink:0; }
+.tb-right { margin-left:auto; font-size:12px; color:var(--text2); }
+.tb-right strong { color:var(--pass); }
+
+.main-content { flex:1; overflow-y:auto; padding:20px; }
+.main-content::-webkit-scrollbar { width:6px; }
+.main-content::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+/* ── REPORT HEADER ────────────────────── */
+.rpt-hdr {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  padding:20px 24px; margin-bottom:16px;
+  display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap;
+}
+.rh-eyebrow { font-size:10px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text2); margin-bottom:4px; }
+.rh-title { font-size:17px; font-weight:800; letter-spacing:-.02em; margin-bottom:8px; }
+.rh-meta { display:flex; gap:8px; flex-wrap:wrap; }
+.rh-tag { font-size:11px; font-weight:600; background:var(--ground); padding:2px 8px; border-radius:3px; color:var(--text2); }
+.rh-right { display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+.verdict-badge { font-size:13px; font-weight:700; padding:5px 12px; border-radius:20px; }
+.v-FAIL             { background:var(--high-bg); color:var(--high); border:1px solid #FECACA; }
+.v-CONDITIONAL_PASS { background:var(--med-bg);  color:var(--med);  border:1px solid #FDE68A; }
+.v-PASS             { background:#ECFDF5;         color:var(--pass); border:1px solid #A7F3D0; }
+.rh-counters { display:flex; gap:14px; }
+.rh-ctr .n { font-size:20px; font-weight:800; line-height:1; }
+.rh-ctr .l { font-size:10px; color:var(--text2); text-transform:uppercase; letter-spacing:.06em; margin-top:2px; }
+.n-h { color:var(--high); } .n-m { color:var(--med); } .n-g { color:var(--pass); } .n-x { color:var(--text2); }
+
+/* Dev chips */
+.dev-summary { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+.dev-chip {
+  background:var(--surface); border:1px solid var(--border); border-radius:20px;
+  padding:5px 12px; font-size:12px; font-weight:600; display:inline-flex; align-items:center;
+  gap:6px; cursor:pointer; transition:all .12s;
+}
+.dev-chip:hover,.dev-chip.active { border-color:var(--accent); color:var(--accent); }
+.dev-verdict { font-size:10px; font-weight:700; padding:1px 5px; border-radius:3px; }
+.dv-FAIL { background:var(--high-bg); color:var(--high); }
+.dv-CONDITIONAL_PASS { background:var(--med-bg); color:var(--med); }
+.dv-PASS { background:#ECFDF5; color:var(--pass); }
+
+/* ── FINDING CARD ─────────────────────── */
+.finding-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--r);
+  margin-bottom:10px; overflow:hidden; display:flex; transition:opacity .2s;
+}
+.finding-card.hidden { display:none; }
+.finding-card.status-fixed_confirmed { opacity:.7; }
+.finding-card.status-false_positive  { opacity:.45; }
+.finding-card.status-wontfix         { opacity:.55; }
+
+.sev-strip {
+  width:36px; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+  writing-mode:vertical-rl; text-orientation:mixed; font-size:9px; font-weight:800;
+  letter-spacing:.18em; text-transform:uppercase; color:rgba(255,255,255,.9);
+  transform:rotate(180deg); user-select:none;
+}
+.sev-HIGH   { background:var(--high); }
+.sev-MEDIUM { background:var(--med);  }
+.sev-LOW    { background:var(--pass); }
+
+.card-body { flex:1; padding:14px 18px; min-width:0; }
+.card-top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:6px; }
+.card-id-row { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.card-id  { font-family:monospace; font-size:11px; font-weight:700; color:var(--text2); }
+.card-dev { font-size:11px; font-weight:600; background:var(--ground); padding:1px 7px; border-radius:3px; color:var(--text2); }
+.ripple-tag { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#EDE9FE; color:var(--fp); }
+.fp-tag     { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#EDE9FE; color:var(--fp); }
+.confirmed-tag { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#DCFCE7; color:var(--pass); }
+
+.card-title { font-size:13.5px; font-weight:700; line-height:1.4; margin-bottom:4px; }
+.card-file  { font-family:monospace; font-size:11px; color:var(--text2); background:var(--ground); display:inline-block; padding:2px 6px; border-radius:3px; margin-bottom:10px; word-break:break-all; }
+
+/* ripple targets */
+.ripple-targets-block {
+  margin-bottom:10px; background:#F5F3FF; border-left:3px solid var(--fp);
+  border-radius:0 4px 4px 0; padding:8px 12px;
+}
+.rt-label { font-size:10px; font-weight:700; color:var(--fp); margin-bottom:4px; }
+.rt-list  { list-style:none; }
+.rt-list li { font-size:11px; font-family:monospace; color:#4C1D95; }
+.rt-list li::before { content:'→ '; }
+
+/* collapsible */
+.collapsible { margin-bottom:10px; }
+.collapse-btn {
+  font-size:11px; font-weight:700; color:var(--text2); display:flex; align-items:center;
+  gap:4px; padding:4px 0; letter-spacing:.04em; text-transform:uppercase;
+}
+.collapse-btn:hover { color:var(--text); }
+.collapse-icon { font-size:10px; transition:transform .15s; display:inline-block; }
+.collapse-icon.open { transform:rotate(90deg); }
+.collapse-content { display:none; margin-top:6px; }
+.collapse-content.open { display:block; }
+.desc-text { font-size:13px; color:var(--text2); line-height:1.75; }
+.action-block { background:var(--ground); border-left:3px solid var(--accent); padding:10px 12px; border-radius:0 4px 4px 0; }
+.action-block.sev-HIGH-action { border-left-color:var(--high); }
+.action-label { font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:4px; }
+.action-block.sev-HIGH-action .action-label { color:var(--high); }
+.action-text { font-size:13px; line-height:1.7; white-space:pre-wrap; }
+
+/* status row */
+.status-row { display:flex; align-items:center; gap:8px; margin-top:12px; flex-wrap:wrap; }
+.status-lbl { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); }
+.status-btns { display:flex; gap:4px; flex-wrap:wrap; }
+.st-btn {
+  font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:20px;
+  border:1.5px solid var(--border); color:var(--text2); background:var(--ground); transition:all .12s;
+}
+.st-btn:hover { opacity:.8; }
+.st-btn.st-open     { background:rgba(156,163,175,.15); border-color:#9CA3AF; color:#374151; }
+.st-btn.st-reviewing{ background:rgba(217,119,6,.1);   border-color:var(--med);  color:#92400E; }
+.st-btn.st-fixed    { background:rgba(5,150,105,.1);   border-color:var(--pass); color:#065F46; }
+.st-btn.st-fixed_confirmed { background:#DCFCE7; border-color:var(--pass); color:var(--pass); cursor:default; }
+.st-btn.st-false_positive  { background:#EDE9FE; border-color:var(--fp);   color:#4C1D95; }
+.st-btn.st-wontfix  { background:rgba(100,116,139,.1); border-color:#64748B; color:#475569; }
+.fp-reg-btn {
+  font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px;
+  border:1px dashed var(--fp); color:var(--fp); background:transparent; transition:all .12s;
+}
+.fp-reg-btn:hover { background:#EDE9FE; }
+
+/* comments */
+.comments-section { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; }
+.comments-title { font-size:11px; font-weight:700; color:var(--text2); letter-spacing:.06em; text-transform:uppercase; margin-bottom:8px; }
+.comment-list { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+.comment-item { background:var(--ground); border-radius:4px; padding:8px 10px; }
+.comment-meta { display:flex; gap:8px; align-items:center; margin-bottom:2px; }
+.comment-author { font-size:11px; font-weight:700; color:var(--accent); }
+.comment-time { font-size:10px; color:var(--text2); }
+.comment-text { font-size:12.5px; line-height:1.6; white-space:pre-wrap; }
+.comment-input-row { display:flex; gap:6px; }
+.comment-input {
+  flex:1; border:1px solid var(--border); border-radius:4px; padding:7px 10px; font-size:13px;
+  resize:none; outline:none; background:var(--surface); min-height:36px; max-height:80px; transition:border-color .12s;
+}
+.comment-input:focus { border-color:var(--accent); }
+.comment-submit {
+  padding:7px 14px; background:var(--accent); color:#fff; border-radius:4px;
+  font-size:12px; font-weight:700; white-space:nowrap; flex-shrink:0; transition:opacity .12s;
+}
+.comment-submit:hover { opacity:.88; }
+.comment-submit:disabled { opacity:.4; cursor:not-allowed; }
+
+/* ── EMPTY STATE ──────────────────────── */
+.empty-state { text-align:center; padding:80px 40px; color:var(--text2); }
+.empty-state .icon { font-size:36px; margin-bottom:12px; }
+.empty-state p { font-size:14px; line-height:1.7; }
+
+/* ── TOAST ────────────────────────────── */
+#toast {
+  position:fixed; bottom:24px; right:24px; background:var(--text); color:#fff;
+  padding:10px 16px; border-radius:6px; font-size:13px; font-weight:500;
+  opacity:0; transform:translateY(8px); transition:all .2s;
+  pointer-events:none; z-index:9000; max-width:320px;
+}
+#toast.show { opacity:1; transform:translateY(0); }
+
+/* ── FALSE POSITIVE MODAL ─────────────── */
+.modal-overlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:500;
+  display:none; align-items:center; justify-content:center;
+}
+.modal-overlay.show { display:flex; }
+.modal-box {
+  background:var(--surface); border-radius:10px; padding:28px 32px;
+  width:480px; max-width:95vw; box-shadow:0 20px 60px rgba(0,0,0,.25);
+}
+.modal-box h3 { font-size:16px; font-weight:800; margin-bottom:8px; }
+.modal-box .modal-desc { font-size:13px; color:var(--text2); margin-bottom:18px; line-height:1.6; }
+.modal-finding-preview {
+  background:var(--ground); border-radius:4px; padding:10px 12px; margin-bottom:18px;
+  font-size:12px; line-height:1.6;
+}
+.modal-finding-preview .pv-file { font-family:monospace; color:var(--text2); margin-bottom:3px; }
+.modal-finding-preview .pv-title { font-weight:700; }
+.modal-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--text2); display:block; margin-bottom:6px; }
+.modal-textarea {
+  width:100%; border:1px solid var(--border); border-radius:4px; padding:9px 12px; font-size:13px;
+  min-height:80px; resize:vertical; outline:none; transition:border-color .15s;
+}
+.modal-textarea:focus { border-color:var(--accent); }
+.modal-btns { display:flex; gap:8px; justify-content:flex-end; margin-top:16px; }
+.modal-cancel {
+  padding:8px 16px; border-radius:4px; font-size:13px; font-weight:600;
+  background:var(--ground); color:var(--text2); transition:all .12s;
+}
+.modal-cancel:hover { background:var(--border); }
+.modal-confirm {
+  padding:8px 16px; border-radius:4px; font-size:13px; font-weight:700;
+  background:var(--fp); color:#fff; transition:opacity .12s;
+}
+.modal-confirm:hover { opacity:.88; }
+
+@media (max-width:700px) {
+  .sidebar { width:100%; height:auto; max-height:200px; }
+  body { flex-direction:column; }
+  .main { height:calc(100vh - 200px); }
+}
+</style>
+</head>
+<body>
+
+<!-- Setup Screen -->
+<div id="setupScreen">
+  <div class="setup-box">
+    <h2>QA Manager 설정</h2>
+    <p>Supabase 프로젝트 URL과 anon public key를 입력하세요.<br>팀원 모두 같은 값을 사용합니다.</p>
+    <div class="setup-field">
+      <label>Supabase URL</label>
+      <input id="cfgUrl" type="url" placeholder="https://xxxxxxxxxxxx.supabase.co">
+    </div>
+    <div class="setup-field">
+      <label>Anon Key</label>
+      <input id="cfgKey" type="text" placeholder="eyJhbGciOiJIUzI1NiIs...">
+    </div>
+    <button class="setup-save" onclick="saveConfig()">저장하고 시작</button>
+    <div class="setup-hint">
+      Supabase 대시보드 → Project Settings → API → Project URL / anon public key<br>
+      먼저 <code>supabase-schema.sql</code>을 SQL Editor에서 실행해 테이블을 만드세요.
+    </div>
+  </div>
+</div>
+
+<!-- Main App -->
+<aside class="sidebar">
+  <div class="sb-head">
+    <div class="sb-title"><span class="sb-dot"></span>QA Manager</div>
+    <div class="sb-author-row">
+      <span class="sb-author-label">작성자</span>
+      <input class="sb-author-input" id="authorInput" type="text" placeholder="이름 입력" maxlength="20">
+    </div>
+  </div>
+
+  <div class="sb-tabs">
+    <div class="sb-tab active" id="tabReports" onclick="switchTab('reports')">리포트</div>
+    <div class="sb-tab" id="tabFp"      onclick="switchTab('fp')">오탐 레지스트리</div>
+  </div>
+
+  <div class="sb-panel" id="panelReports">
+    <div style="padding:20px 16px;color:rgba(255,255,255,.3);font-size:12px;" id="sbLoading">로딩 중…</div>
+  </div>
+  <div class="sb-panel" id="panelFp" style="display:none"></div>
+
+  <div class="sb-footer">
+    <div class="sb-btn" onclick="refreshAll()">↻ 새로고침</div>
+    <div class="sb-btn" onclick="showSetup()">⚙ 설정</div>
+  </div>
+</aside>
+
+<div class="main">
+  <div class="main-toolbar" id="toolbar" style="display:none">
+    <span class="filter-label">필터</span>
+    <button class="filter-btn active" onclick="applyFilter(this,'all')">전체</button>
+    <button class="filter-btn" onclick="applyFilter(this,'sev:HIGH')">HIGH</button>
+    <button class="filter-btn" onclick="applyFilter(this,'sev:MEDIUM')">MEDIUM</button>
+    <div class="filter-sep"></div>
+    <button class="filter-btn" onclick="applyFilter(this,'st:open')">미검토</button>
+    <button class="filter-btn" onclick="applyFilter(this,'st:reviewing')">검토중</button>
+    <button class="filter-btn" onclick="applyFilter(this,'st:fixed')">수정완료</button>
+    <button class="filter-btn" onclick="applyFilter(this,'st:fixed_confirmed')">검증완료</button>
+    <button class="filter-btn" onclick="applyFilter(this,'st:false_positive')">오탐</button>
+    <div class="tb-right" id="progressText"></div>
+  </div>
+  <div class="main-content" id="mainContent">
+    <div class="empty-state">
+      <div class="icon">🔍</div>
+      <p>왼쪽에서 QA 리포트를 선택하세요.</p>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- False Positive Modal -->
+<div class="modal-overlay" id="fpModal">
+  <div class="modal-box">
+    <h3>오탐 레지스트리 등록</h3>
+    <p class="modal-desc">등록 후 향후 모든 QA 리포트에서 동일 파일·제목의 이슈가 자동으로 오탐 처리됩니다.</p>
+    <div class="modal-finding-preview" id="fpPreview"></div>
+    <label class="modal-label" for="fpReason">등록 사유 <span style="color:var(--high)">*</span></label>
+    <textarea class="modal-textarea" id="fpReason" placeholder="예: fail-open 설계로 인한 의도적 패턴. 운영팀 검토 완료."></textarea>
+    <div class="modal-btns">
+      <button class="modal-cancel" onclick="closeFpModal()">취소</button>
+      <button class="modal-confirm" onclick="registerFp()">오탐 등록</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── CONFIG — 여기만 교체하세요 ─────────────
+   Supabase 대시보드 > Settings > API 에서 복사
+──────────────────────────────────────────── */
+const SB_URL = 'https://rrldobfawpwrdcrsdjzr.supabase.co';
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJybGRvYmZhd3B3cmRjcnNkanpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MzQ4MTAsImV4cCI6MjA5ODExMDgxMH0.TEHIGl74ckI91bcFxTlywJ6T_Y9fartfdqdGWboqjZE';
+function getHeaders(extra={}) {
+  return {
+    'apikey': SB_KEY, 'Authorization': 'Bearer ' + SB_KEY,
+    'Content-Type': 'application/json', ...extra
+  };
+}
+async function sbGet(path) {
+  const r = await fetch(SB_URL + '/rest/v1/' + path, { headers: getHeaders() });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function sbPost(table, body, prefer='return=minimal') {
+  const r = await fetch(SB_URL + '/rest/v1/' + table, {
+    method:'POST', headers: getHeaders({'Prefer': prefer}),
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return prefer === 'return=minimal' ? null : r.json();
+}
+async function sbPatch(table, filter, body) {
+  const r = await fetch(SB_URL + '/rest/v1/' + table + '?' + filter, {
+    method:'PATCH', headers: getHeaders({'Prefer':'return=minimal'}),
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+async function sbDelete(table, filter) {
+  const r = await fetch(SB_URL + '/rest/v1/' + table + '?' + filter, {
+    method:'DELETE', headers: getHeaders()
+  });
+  if (!r.ok) throw new Error(await r.text());
+}
+
+function showSetup() {
+  document.getElementById('cfgUrl').value = SB_URL;
+  document.getElementById('cfgKey').value = SB_KEY;
+  document.getElementById('setupScreen').style.display = 'flex';
+}
+function saveConfig() {
+  document.getElementById('setupScreen').style.display = 'none';
+}
+
+/* ── STATE ───────────────────────────────── */
+let currentReport = null;
+let currentFindings = [];
+let currentFilter = 'all';
+let currentDevFilter = null;
+let fpPending = null; // { pk, file, title }
+
+const VERDICT_LABEL = { FAIL:'🔴 FAIL', CONDITIONAL_PASS:'🟡 Conditional PASS', PASS:'🟢 PASS' };
+const STATUS_META = {
+  open:             { label:'미검토',   icon:'○' },
+  reviewing:        { label:'검토중',   icon:'◑' },
+  fixed:            { label:'수정완료', icon:'✓' },
+  fixed_confirmed:  { label:'검증완료', icon:'✅' },
+  false_positive:   { label:'오탐',     icon:'✕' },
+  wontfix:          { label:'수정안함', icon:'—' },
+};
+
+/* ── INIT ────────────────────────────────── */
+function init() {
+  loadAuthor();
+  loadReportList();
+  loadFpRegistry();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('setupScreen').style.display = 'none';
+  document.getElementById('authorInput').value = localStorage.getItem('qa_author') || '';
+  document.getElementById('authorInput').addEventListener('input', e =>
+    localStorage.setItem('qa_author', e.target.value.trim()));
+  init();
+});
+
+function loadAuthor() {
+  document.getElementById('authorInput').value = localStorage.getItem('qa_author') || '';
+}
+function getAuthor() {
+  return document.getElementById('authorInput').value.trim() || '익명';
+}
+
+/* ── TAB SWITCH ──────────────────────────── */
+function switchTab(tab) {
+  document.getElementById('panelReports').style.display = tab === 'reports' ? '' : 'none';
+  document.getElementById('panelFp').style.display      = tab === 'fp'      ? '' : 'none';
+  document.getElementById('tabReports').classList.toggle('active', tab === 'reports');
+  document.getElementById('tabFp').classList.toggle('active', tab === 'fp');
+}
+
+function refreshAll() {
+  loadReportList();
+  loadFpRegistry();
+  if (currentReport) loadReport(currentReport.id);
+}
+
+/* ── REPORT LIST ─────────────────────────── */
+async function loadReportList() {
+  try {
+    const reports = await sbGet('qa_reports?order=uploaded_at.desc&limit=100');
+    const findings = await sbGet('qa_findings?select=report_id,severity,status&limit=5000');
+    renderReportList(reports, findings);
+    document.getElementById('sbLoading').style.display = 'none';
+  } catch(e) {
+    document.getElementById('sbLoading').textContent = '로드 실패: ' + e.message;
+  }
+}
+
+function renderReportList(reports, findings) {
+  const panel = document.getElementById('panelReports');
+  if (!reports.length) {
+    panel.innerHTML = '<div style="padding:20px 16px;color:rgba(255,255,255,.3);font-size:12px;">리포트 없음</div>';
+    return;
+  }
+  // compute counts per report
+  const stats = {};
+  for (const f of findings) {
+    if (!stats[f.report_id]) stats[f.report_id] = { high:0, med:0, open:0, fixed:0, fp:0 };
+    const s = stats[f.report_id];
+    if (f.severity === 'HIGH') s.high++;
+    if (f.severity === 'MEDIUM') s.med++;
+    if (f.status === 'open' || f.status === 'reviewing') s.open++;
+    if (f.status === 'fixed' || f.status === 'fixed_confirmed') s.fixed++;
+    if (f.status === 'false_positive') s.fp++;
+  }
+  panel.innerHTML = reports.map(r => {
+    const s = stats[r.id] || { high:0, med:0, open:0, fixed:0, fp:0 };
+    const vc = r.verdict === 'FAIL' ? 'ri-fail' : r.verdict === 'CONDITIONAL_PASS' ? 'ri-cond' : 'ri-pass';
+    const vt = r.verdict === 'FAIL' ? '🔴 FAIL' : r.verdict === 'CONDITIONAL_PASS' ? '🟡 조건부' : '🟢 PASS';
+    const active = currentReport && currentReport.id === r.id ? ' active' : '';
+    return `<div class="report-item${active}" onclick="loadReport('${r.id}')">
+      <div class="ri-date">${r.date} <span class="ri-badge ${vc}">${vt}</span></div>
+      <div class="ri-period">${r.period}</div>
+      <div class="ri-stats">
+        ${s.high  ? `<span class="ri-badge" style="background:rgba(220,38,38,.2);color:#FCA5A5">H ${s.high}</span>` : ''}
+        ${s.med   ? `<span class="ri-badge" style="background:rgba(217,119,6,.2);color:#FCD34D">M ${s.med}</span>` : ''}
+        ${s.open  ? `<span class="ri-badge" style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.6)">${s.open}건 미검토</span>` : ''}
+        ${s.fixed ? `<span class="ri-badge" style="background:rgba(5,150,105,.2);color:#6EE7B7">✓ ${s.fixed}</span>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ── REPORT DETAIL ───────────────────────── */
+async function loadReport(id) {
+  try {
+    const [reports, findings] = await Promise.all([
+      sbGet('qa_reports?id=eq.' + encodeURIComponent(id)),
+      sbGet('qa_findings?report_id=eq.' + encodeURIComponent(id) + '&order=created_at.asc')
+    ]);
+    if (!reports.length) return;
+    currentReport  = reports[0];
+    currentFindings = findings;
+    currentFilter   = 'all';
+    currentDevFilter = null;
+    document.getElementById('toolbar').style.display = '';
+    renderReport();
+    // refresh sidebar active state
+    document.querySelectorAll('.report-item').forEach(el => {
+      el.classList.toggle('active', el.getAttribute('onclick') && el.getAttribute('onclick').includes(`'${id}'`));
+    });
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.main-toolbar .filter-btn').classList.add('active');
+  } catch(e) {
+    toast('리포트 로드 실패: ' + e.message, true);
+  }
+}
+
+function renderReport() {
+  const r = currentReport;
+  const findings = currentFindings;
+  const high   = findings.filter(f => f.severity === 'HIGH'   && f.status !== 'false_positive').length;
+  const med    = findings.filter(f => f.severity === 'MEDIUM' && f.status !== 'false_positive').length;
+  const open   = findings.filter(f => ['open','reviewing'].includes(f.status)).length;
+  const fixed  = findings.filter(f => ['fixed','fixed_confirmed'].includes(f.status)).length;
+  const fp     = findings.filter(f => f.status === 'false_positive').length;
+
+  // progress
+  const total = findings.length;
+  const done  = fixed + fp;
+  document.getElementById('progressText').innerHTML =
+    `진행률 <strong>${done}/${total}</strong> 처리완료`;
+
+  // group by developer
+  const devs = (r.developers || []);
+  const devNames = [...new Set(findings.map(f => f.developer).filter(Boolean))];
+  const allDevs = devs.length ? devs : devNames.map(d => ({ handle:d, commits:0, verdict:'PASS' }));
+
+  let html = `<div class="rpt-hdr">
+    <div>
+      <div class="rh-eyebrow">QA 주간 리포트</div>
+      <div class="rh-title">${esc(r.id)}</div>
+      <div class="rh-meta">
+        <span class="rh-tag">📅 ${r.date}</span>
+        <span class="rh-tag">🔀 ${esc(r.branch)}</span>
+        <span class="rh-tag">📦 ${r.total_commits} 커밋</span>
+        <span class="rh-tag">📆 ${esc(r.period)}</span>
+      </div>
+    </div>
+    <div class="rh-right">
+      <span class="verdict-badge v-${r.verdict}">${VERDICT_LABEL[r.verdict] || r.verdict}</span>
+      <div class="rh-counters">
+        <div class="rh-ctr"><div class="n n-h">${high}</div><div class="l">HIGH</div></div>
+        <div class="rh-ctr"><div class="n n-m">${med}</div><div class="l">MEDIUM</div></div>
+        <div class="rh-ctr"><div class="n n-g">${fixed}</div><div class="l">완료</div></div>
+        <div class="rh-ctr"><div class="n n-x">${open}</div><div class="l">미검토</div></div>
+        ${fp ? `<div class="rh-ctr"><div class="n" style="color:var(--fp)">${fp}</div><div class="l">오탐</div></div>` : ''}
+      </div>
+    </div>
+  </div>`;
+
+  // developer chips
+  if (allDevs.length > 1) {
+    html += `<div class="dev-summary">
+      <div class="dev-chip ${!currentDevFilter?'active':''}" onclick="filterDev(null)">전체</div>
+      ${allDevs.map(d => `
+        <div class="dev-chip ${currentDevFilter===d.handle?'active':''}" onclick="filterDev('${esc(d.handle)}')">
+          ${esc(d.handle)}
+          <span class="dev-verdict dv-${d.verdict||'PASS'}">${VERDICT_LABEL[d.verdict]||d.verdict||''}</span>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  // finding cards
+  html += findings.map(f => renderCard(f)).join('');
+
+  if (!findings.length) {
+    html += `<div class="empty-state"><div class="icon">✅</div><p>이슈가 없습니다.</p></div>`;
+  }
+
+  document.getElementById('mainContent').innerHTML = html;
+  applyFilter(null, currentFilter, false);
+}
+
+function renderCard(f) {
+  const sm = STATUS_META[f.status] || { label: f.status, icon:'?' };
+  const isRipple = f.type === 'ripple';
+  const isFp     = f.status === 'false_positive';
+  const isConf   = f.status === 'fixed_confirmed';
+  const isWont   = f.status === 'wontfix';
+
+  const comments = Array.isArray(f.comments) ? f.comments : [];
+  const commentHtml = comments.map(c => `
+    <div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-author">${esc(c.author||'?')}</span>
+        <span class="comment-time">${c.timestamp ? new Date(c.timestamp).toLocaleString('ko') : ''}</span>
+      </div>
+      <div class="comment-text">${esc(c.text||'')}</div>
+    </div>`).join('');
+
+  const statusBtns = Object.entries(STATUS_META).map(([st, meta]) => {
+    if (st === 'fixed_confirmed') return ''; // 자동 전환만
+    const active = f.status === st ? ` st-${st}` : '';
+    const disabled = isConf && st !== 'fixed_confirmed' ? ' style="opacity:.4;cursor:not-allowed"' : '';
+    return `<button class="st-btn${active}" onclick="setStatus(${f.pk},'${st}')"${disabled}>${meta.icon} ${meta.label}</button>`;
+  }).join('');
+
+  return `<div class="finding-card status-${f.status}" id="card-${f.pk}" data-sev="${f.severity}" data-dev="${esc(f.developer||'')}">
+    <div class="sev-strip sev-${f.severity}">${f.severity}</div>
+    <div class="card-body">
+      <div class="card-top">
+        <div class="card-id-row">
+          <span class="card-id">${esc(f.finding_id)}</span>
+          <span class="card-dev">${esc(f.developer||'?')}</span>
+          ${isRipple ? '<span class="ripple-tag">사이드이펙트</span>' : ''}
+          ${isFp     ? '<span class="fp-tag">오탐</span>' : ''}
+          ${isConf   ? '<span class="confirmed-tag">✅ 검증완료</span>' : ''}
+          ${isWont   ? '<span style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;background:rgba(100,116,139,.15);color:#64748B;">수정안함</span>' : ''}
+        </div>
+      </div>
+      <div class="card-title">${esc(f.title)}</div>
+      <div class="card-file">${esc(f.file)}</div>
+      ${isRipple && f.ripple_targets ? `
+        <div class="ripple-targets-block">
+          <div class="rt-label">영향 범위</div>
+          <ul class="rt-list">${f.ripple_targets.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+        </div>` : ''}
+      ${f.description ? `<div class="collapsible">
+        <button class="collapse-btn" onclick="toggleCollapse(this)">
+          <span class="collapse-icon">▶</span> 현상 설명
+        </button>
+        <div class="collapse-content">
+          <div class="desc-text">${esc(f.description).replace(/\n/g,'<br>')}</div>
+        </div>
+      </div>` : ''}
+      ${f.action ? `<div class="collapsible">
+        <button class="collapse-btn" onclick="toggleCollapse(this)">
+          <span class="collapse-icon">▶</span> 수정 지시
+        </button>
+        <div class="collapse-content">
+          <div class="action-block${f.severity==='HIGH'?' sev-HIGH-action':''}">
+            <div class="action-label">Action Required</div>
+            <div class="action-text">${esc(f.action)}</div>
+          </div>
+        </div>
+      </div>` : ''}
+
+      <div class="status-row">
+        <span class="status-lbl">상태</span>
+        <div class="status-btns">${statusBtns}</div>
+        ${!isFp && !isConf ? `<button class="fp-reg-btn" onclick="openFpModal(${f.pk})">오탐 등록</button>` : ''}
+      </div>
+
+      <div class="comments-section">
+        <div class="comments-title">댓글 ${comments.length ? `(${comments.length})` : ''}</div>
+        <div class="comment-list" id="clist-${f.pk}">${commentHtml}</div>
+        <div class="comment-input-row">
+          <textarea class="comment-input" id="cinput-${f.pk}" placeholder="댓글 입력…" rows="1"
+            oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          <button class="comment-submit" onclick="addComment(${f.pk})">전송</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── FILTER ──────────────────────────────── */
+function applyFilter(btn, filter, updateBtn = true) {
+  currentFilter = filter;
+  if (updateBtn) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
+  document.querySelectorAll('.finding-card').forEach(card => {
+    const sev = card.dataset.sev;
+    const dev = card.dataset.dev;
+    const cls = [...card.classList].find(c => c.startsWith('status-'))?.replace('status-','');
+    let show = true;
+    if (filter === 'sev:HIGH')           show = sev === 'HIGH';
+    else if (filter === 'sev:MEDIUM')    show = sev === 'MEDIUM';
+    else if (filter.startsWith('st:'))   show = cls === filter.slice(3);
+    if (currentDevFilter && dev !== currentDevFilter) show = false;
+    card.classList.toggle('hidden', !show);
+  });
+}
+
+function filterDev(handle) {
+  currentDevFilter = handle;
+  document.querySelectorAll('.dev-chip').forEach(c => c.classList.remove('active'));
+  const chips = document.querySelectorAll('.dev-chip');
+  chips.forEach(c => {
+    const active = handle === null
+      ? c.textContent.trim() === '전체'
+      : c.getAttribute('onclick') && c.getAttribute('onclick').includes(`'${handle}'`);
+    c.classList.toggle('active', active);
+  });
+  applyFilter(null, currentFilter, false);
+}
+
+/* ── STATUS UPDATE ───────────────────────── */
+async function setStatus(pk, status) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  if (f.status === status) return;
+  try {
+    await sbPatch('qa_findings', 'pk=eq.' + pk, { status });
+    f.status = status;
+    const card = document.getElementById('card-' + pk);
+    if (card) {
+      // remove old status class
+      card.className = card.className.replace(/status-\S+/, '').trim() + ' status-' + status;
+      // re-render card body
+      const newCard = document.createElement('div');
+      newCard.innerHTML = renderCard(f);
+      card.replaceWith(newCard.firstElementChild);
+    }
+    toast('상태 변경: ' + (STATUS_META[status]?.label || status));
+  } catch(e) {
+    toast('저장 실패: ' + e.message, true);
+  }
+}
+
+async function addComment(pk) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  const input = document.getElementById('cinput-' + pk);
+  const text = input.value.trim();
+  if (!text) return;
+  const comment = { author: getAuthor(), text, timestamp: new Date().toISOString() };
+  const comments = [...(f.comments || []), comment];
+  try {
+    await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
+    f.comments = comments;
+    const list = document.getElementById('clist-' + pk);
+    if (list) list.innerHTML += `<div class="comment-item">
+      <div class="comment-meta">
+        <span class="comment-author">${esc(comment.author)}</span>
+        <span class="comment-time">${new Date(comment.timestamp).toLocaleString('ko')}</span>
+      </div>
+      <div class="comment-text">${esc(comment.text)}</div>
+    </div>`;
+    input.value = ''; input.style.height = '';
+    toast('댓글 등록 완료');
+  } catch(e) {
+    toast('댓글 저장 실패: ' + e.message, true);
+  }
+}
+
+/* ── FALSE POSITIVE ──────────────────────── */
+function openFpModal(pk) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  fpPending = f;
+  document.getElementById('fpPreview').innerHTML =
+    `<div class="pv-file">${esc(f.file)}</div><div class="pv-title">${esc(f.title)}</div>`;
+  document.getElementById('fpReason').value = '';
+  document.getElementById('fpModal').classList.add('show');
+}
+function closeFpModal() {
+  document.getElementById('fpModal').classList.remove('show');
+  fpPending = null;
+}
+async function registerFp() {
+  const reason = document.getElementById('fpReason').value.trim();
+  if (!reason) { alert('등록 사유를 입력하세요.'); return; }
+  const f = fpPending;
+  try {
+    await sbPost('false_positive_registry', {
+      file_pattern: f.file,
+      title_pattern: f.title,
+      reason,
+      registered_by: getAuthor(),
+      source_report_id: currentReport.id
+    });
+    await setStatus(f.pk, 'false_positive');
+    closeFpModal();
+    loadFpRegistry();
+    toast('오탐 레지스트리에 등록됐습니다. 향후 리포트에서 자동 제외됩니다.');
+  } catch(e) {
+    if (e.message && e.message.includes('unique')) {
+      toast('이미 등록된 오탐 패턴입니다.', true);
+    } else {
+      toast('등록 실패: ' + e.message, true);
+    }
+  }
+}
+
+/* ── FP REGISTRY PANEL ───────────────────── */
+async function loadFpRegistry() {
+  try {
+    const items = await sbGet('false_positive_registry?order=created_at.desc');
+    const panel = document.getElementById('panelFp');
+    if (!items.length) {
+      panel.innerHTML = '<div class="fp-empty">등록된 오탐 없음</div>';
+      return;
+    }
+    panel.innerHTML = items.map(item => `
+      <div class="fp-item">
+        <div class="fp-del" onclick="deleteFp(${item.id})" title="삭제">✕</div>
+        <div class="fp-file">${esc(item.file_pattern)}</div>
+        <div class="fp-title">${esc(item.title_pattern)}</div>
+        <div class="fp-reason">📌 ${esc(item.reason)}</div>
+      </div>`).join('');
+  } catch(e) { /* silent */ }
+}
+async function deleteFp(id) {
+  if (!confirm('오탐 레지스트리에서 삭제하시겠어요? 향후 리포트에서 다시 검출됩니다.')) return;
+  try {
+    await sbDelete('false_positive_registry', 'id=eq.' + id);
+    loadFpRegistry();
+    toast('오탐 등록 해제');
+  } catch(e) {
+    toast('삭제 실패: ' + e.message, true);
+  }
+}
+
+/* ── UTILS ───────────────────────────────── */
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleCollapse(btn) {
+  const icon    = btn.querySelector('.collapse-icon');
+  const content = btn.parentElement.querySelector('.collapse-content');
+  icon.classList.toggle('open');
+  content.classList.toggle('open');
+}
+
+let toastTimer;
+function toast(msg, isErr = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.background = isErr ? '#DC2626' : '#18202F';
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// close modal on overlay click
+document.getElementById('fpModal').addEventListener('click', function(e) {
+  if (e.target === this) closeFpModal();
+});
+</script>
+</body>
+</html>
