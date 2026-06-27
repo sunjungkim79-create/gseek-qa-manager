@@ -287,11 +287,22 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 .comments-section { margin-top:12px; border-top:1px solid var(--border); padding-top:10px; }
 .comments-title { font-size:11px; font-weight:700; color:var(--text2); letter-spacing:.06em; text-transform:uppercase; margin-bottom:8px; }
 .comment-list { display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
-.comment-item { background:var(--ground); border-radius:4px; padding:8px 10px; }
+.comment-item { background:var(--ground); border-radius:4px; padding:8px 10px; position:relative; }
+.comment-item:hover .comment-actions { opacity:1; }
 .comment-meta { display:flex; gap:8px; align-items:center; margin-bottom:2px; }
 .comment-author { font-size:11px; font-weight:700; color:var(--accent); }
 .comment-time { font-size:10px; color:var(--text2); }
+.comment-actions { opacity:0; margin-left:auto; display:flex; gap:2px; transition:opacity .15s; }
+.comment-action-btn { font-size:11px; padding:1px 6px; border-radius:3px; border:1px solid transparent; color:var(--text2); background:none; cursor:pointer; transition:background .12s,color .12s; }
+.comment-action-btn:hover { background:var(--surface); border-color:var(--border); }
+.comment-action-btn.del:hover { background:#FEF2F2; border-color:#FCA5A5; color:var(--high); }
 .comment-text { font-size:12.5px; line-height:1.6; white-space:pre-wrap; }
+.comment-edit-area { width:100%; border:1px solid var(--accent); border-radius:4px; padding:6px 8px; font-size:12.5px; line-height:1.6; resize:none; outline:none; background:var(--surface); margin-top:4px; }
+.comment-edit-btns { display:flex; gap:5px; margin-top:5px; }
+.comment-edit-save { padding:4px 12px; background:var(--accent); color:#fff; border-radius:4px; font-size:12px; font-weight:700; cursor:pointer; border:none; }
+.comment-edit-cancel { padding:4px 10px; background:none; border:1px solid var(--border); border-radius:4px; font-size:12px; color:var(--text2); cursor:pointer; }
+.comment-edit-save:hover { opacity:.88; }
+.comment-edit-cancel:hover { background:var(--ground); }
 .comment-attachment { margin-top:6px; }
 .comment-attachment img { max-width:100%; max-height:320px; border-radius:4px; border:1px solid var(--border); display:block; cursor:zoom-in; }
 .comment-attachment-link { display:inline-flex; align-items:center; gap:5px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:4px 10px; color:var(--accent); text-decoration:none; }
@@ -747,26 +758,7 @@ function renderCard(f) {
   const isWont   = f.status === 'wontfix';
 
   const comments = Array.isArray(f.comments) ? f.comments : [];
-  const commentHtml = comments.map(c => {
-    const att = c.attachment;
-    let attHtml = '';
-    if (att) {
-      const isImg = att.type && att.type.startsWith('image/');
-      attHtml = `<div class="comment-attachment">` + (
-        isImg
-          ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
-          : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
-      ) + `</div>`;
-    }
-    return `<div class="comment-item">
-      <div class="comment-meta">
-        <span class="comment-author">${esc(c.author||'?')}</span>
-        <span class="comment-time">${c.timestamp ? new Date(c.timestamp).toLocaleString('ko') : ''}</span>
-      </div>
-      ${c.text ? `<div class="comment-text">${esc(c.text)}</div>` : ''}
-      ${attHtml}
-    </div>`;
-  }).join('');
+  const commentHtml = comments.map((c, idx) => renderCommentItem(c, f.pk, idx)).join('');
 
   const statusBtns = Object.entries(STATUS_META).map(([st, meta]) => {
     if (st === 'fixed_confirmed') return ''; // 자동 전환만
@@ -942,7 +934,7 @@ function clearAttachment(pk) {
   if (fi) fi.value = '';
 }
 
-function buildCommentItem(comment) {
+function renderCommentItem(comment, pk, idx) {
   const att = comment.attachment;
   let attHtml = '';
   if (att) {
@@ -953,13 +945,20 @@ function buildCommentItem(comment) {
         : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
     ) + `</div>`;
   }
-  return `<div class="comment-item">
+  const isMine = comment.author === getAuthor();
+  return `<div class="comment-item" id="ci-${pk}-${idx}">
     <div class="comment-meta">
-      <span class="comment-author">${esc(comment.author)}</span>
+      <span class="comment-author">${esc(comment.author||'?')}</span>
       <span class="comment-time">${comment.timestamp ? new Date(comment.timestamp).toLocaleString('ko') : ''}</span>
+      <div class="comment-actions">
+        ${isMine ? `<button class="comment-action-btn" onclick="editComment(${pk},${idx})" title="수정">✎</button>` : ''}
+        <button class="comment-action-btn del" onclick="deleteComment(${pk},${idx})" title="삭제">🗑</button>
+      </div>
     </div>
-    ${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}
-    ${attHtml}
+    <div id="cv-${pk}-${idx}">
+      ${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}
+      ${attHtml}
+    </div>
   </div>`;
 }
 
@@ -977,12 +976,100 @@ async function addComment(pk) {
     await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
     f.comments = comments;
     const list = document.getElementById('clist-' + pk);
-    if (list) list.insertAdjacentHTML('beforeend', buildCommentItem(comment));
+    if (list) list.insertAdjacentHTML('beforeend', renderCommentItem(comment, pk, comments.length - 1));
     input.value = ''; input.style.height = '';
     clearAttachment(pk);
     toast('댓글 등록 완료');
   } catch(e) {
     toast('댓글 저장 실패: ' + e.message, true);
+  }
+}
+
+/* ── COMMENT EDIT / DELETE ───────────────── */
+function editComment(pk, idx) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  const comment = (f.comments || [])[idx];
+  if (!comment) return;
+  const view = document.getElementById(`cv-${pk}-${idx}`);
+  if (!view) return;
+  // 이미 편집 중이면 무시
+  if (view.querySelector('.comment-edit-area')) return;
+  const att = comment.attachment;
+  let attHtml = '';
+  if (att) {
+    const isImg = att.type && att.type.startsWith('image/');
+    attHtml = `<div class="comment-attachment" style="margin-top:6px">` + (
+      isImg
+        ? `<img src="${att.data}" alt="${esc(att.name)}" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid var(--border)">`
+        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)}</a>`
+    ) + `</div>`;
+  }
+  view.innerHTML = `
+    <textarea class="comment-edit-area" id="cedit-${pk}-${idx}" rows="3">${esc(comment.text||'')}</textarea>
+    ${attHtml}
+    <div class="comment-edit-btns">
+      <button class="comment-edit-save" onclick="saveCommentEdit(${pk},${idx})">저장</button>
+      <button class="comment-edit-cancel" onclick="cancelCommentEdit(${pk},${idx})">취소</button>
+    </div>`;
+  const ta = document.getElementById(`cedit-${pk}-${idx}`);
+  if (ta) { ta.style.height = ta.scrollHeight + 'px'; ta.focus(); }
+}
+
+function cancelCommentEdit(pk, idx) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  const comment = (f.comments || [])[idx];
+  if (!comment) return;
+  const view = document.getElementById(`cv-${pk}-${idx}`);
+  if (!view) return;
+  const att = comment.attachment;
+  let attHtml = '';
+  if (att) {
+    const isImg = att.type && att.type.startsWith('image/');
+    attHtml = `<div class="comment-attachment">` + (
+      isImg
+        ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
+        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
+    ) + `</div>`;
+  }
+  view.innerHTML = `${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}${attHtml}`;
+}
+
+async function saveCommentEdit(pk, idx) {
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  const ta = document.getElementById(`cedit-${pk}-${idx}`);
+  if (!ta) return;
+  const newText = ta.value.trim();
+  const comments = [...(f.comments || [])];
+  comments[idx] = { ...comments[idx], text: newText, edited: true };
+  try {
+    await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
+    f.comments = comments;
+    cancelCommentEdit(pk, idx); // 뷰 모드로 복귀
+    toast('댓글 수정 완료');
+  } catch(e) {
+    toast('댓글 수정 실패: ' + e.message, true);
+  }
+}
+
+async function deleteComment(pk, idx) {
+  if (!confirm('이 댓글을 삭제하시겠습니까?')) return;
+  const f = currentFindings.find(x => x.pk === pk);
+  if (!f) return;
+  const comments = (f.comments || []).filter((_, i) => i !== idx);
+  try {
+    await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
+    f.comments = comments;
+    // 목록 전체 재렌더링 (인덱스가 바뀌므로)
+    const list = document.getElementById('clist-' + pk);
+    if (list) list.innerHTML = comments.map((c, i) => renderCommentItem(c, pk, i)).join('');
+    const title = list && list.closest('.comments-section')?.querySelector('.comments-title');
+    if (title) title.textContent = `댓글 ${comments.length ? `(${comments.length})` : ''}`;
+    toast('댓글 삭제 완료');
+  } catch(e) {
+    toast('댓글 삭제 실패: ' + e.message, true);
   }
 }
 
