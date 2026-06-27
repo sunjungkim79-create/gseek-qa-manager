@@ -220,6 +220,17 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 .fp-tag     { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#EDE9FE; color:var(--fp); }
 .confirmed-tag { font-size:10px; font-weight:700; padding:1px 6px; border-radius:3px; background:#DCFCE7; color:var(--pass); }
 
+/* 이전 이슈 해결 확인 섹션 */
+.resolved-section { background:#F0FDF4; border:1px solid #86EFAC; border-radius:8px; padding:14px 16px; margin-bottom:16px; }
+.resolved-hdr { font-size:13px; font-weight:700; color:#15803D; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.resolved-count { font-size:11px; font-weight:700; background:#DCFCE7; color:var(--pass); padding:1px 8px; border-radius:99px; }
+.resolved-list { display:flex; flex-direction:column; gap:5px; }
+.resolved-item { display:flex; align-items:baseline; gap:8px; font-size:12px; padding:4px 0; border-bottom:1px dashed #BBF7D0; }
+.resolved-item:last-child { border:none; }
+.resolved-id { font-family:monospace; font-weight:700; color:#15803D; flex-shrink:0; min-width:28px; }
+.resolved-report { font-size:10px; color:#4ADE80; background:#14532D; padding:1px 6px; border-radius:3px; flex-shrink:0; font-family:monospace; }
+.resolved-title { color:#166534; line-height:1.4; }
+
 .card-title { font-size:13.5px; font-weight:700; line-height:1.4; margin-bottom:4px; }
 .card-file  { font-family:monospace; font-size:11px; color:var(--text2); background:var(--ground); display:inline-block; padding:2px 6px; border-radius:3px; margin-bottom:10px; word-break:break-all; }
 
@@ -490,6 +501,7 @@ function saveConfig() {
 /* ── STATE ───────────────────────────────── */
 let currentReport = null;
 let currentFindings = [];
+let currentResolvedFindings = [];
 let currentFilter = 'all';
 let currentDevFilter = null;
 let fpPending = null; // { pk, file, title }
@@ -574,7 +586,7 @@ function renderReportList(reports, findings) {
     const vc = r.verdict === 'FAIL' ? 'ri-fail' : r.verdict === 'CONDITIONAL_PASS' ? 'ri-cond' : 'ri-pass';
     const vt = r.verdict === 'FAIL' ? '🔴 FAIL' : r.verdict === 'CONDITIONAL_PASS' ? '🟡 조건부' : '🟢 PASS';
     const active = currentReport && currentReport.id === r.id ? ' active' : '';
-    const repoLabel = r.repo === 'firb-enterprise' ? 'enterprise' : 'user';
+    const repoLabel = r.repo === 'firb-enterprise' ? '[관리자]' : '[프론트]';
     const repoBg = r.repo === 'firb-enterprise' ? 'rgba(124,58,237,.35)' : 'rgba(59,82,232,.3)';
     return `<div class="report-item${active}" onclick="loadReport('${r.id}')">
       <div class="ri-date">${r.date}
@@ -604,6 +616,17 @@ async function loadReport(id) {
     currentFindings = findings;
     currentFilter   = 'all';
     currentDevFilter = null;
+
+    // 이전 리포트에서 fixed_confirmed 된 이슈 조회 (이전 이슈 해결 확인 섹션)
+    try {
+      const repo = currentReport.repo;
+      const allResolved = await sbGet('qa_findings?status=eq.fixed_confirmed&select=finding_id,report_id,title,file');
+      currentResolvedFindings = allResolved.filter(f => {
+        if (f.report_id === id) return false;
+        if (repo === 'firb-enterprise') return f.report_id.startsWith('qa-ent-');
+        return !f.report_id.startsWith('qa-ent-'); // firb-enterprise-user (qa-user-* 및 레거시 qa-*)
+      });
+    } catch(_) { currentResolvedFindings = []; }
     document.getElementById('toolbar').style.display = '';
     renderReport();
     // refresh sidebar active state
@@ -669,6 +692,21 @@ function renderReport() {
           ${esc(d.handle)}
           <span class="dev-verdict dv-${d.verdict||'PASS'}">${VERDICT_LABEL[d.verdict]||d.verdict||''}</span>
         </div>`).join('')}
+    </div>`;
+  }
+
+  // 이전 이슈 해결 확인 섹션
+  if (currentResolvedFindings && currentResolvedFindings.length) {
+    html += `<div class="resolved-section">
+      <div class="resolved-hdr">✅ 이전 이슈 해결 확인 <span class="resolved-count">${currentResolvedFindings.length}건</span></div>
+      <div class="resolved-list">
+        ${currentResolvedFindings.map(f => `
+          <div class="resolved-item">
+            <span class="resolved-id">${esc(f.finding_id)}</span>
+            <span class="resolved-report">${esc(f.report_id)}</span>
+            <span class="resolved-title">${esc(f.title)}</span>
+          </div>`).join('')}
+      </div>
     </div>`;
   }
 
