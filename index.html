@@ -292,18 +292,35 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 .comment-author { font-size:11px; font-weight:700; color:var(--accent); }
 .comment-time { font-size:10px; color:var(--text2); }
 .comment-text { font-size:12.5px; line-height:1.6; white-space:pre-wrap; }
-.comment-input-row { display:flex; gap:6px; }
+.comment-attachment { margin-top:6px; }
+.comment-attachment img { max-width:100%; max-height:320px; border-radius:4px; border:1px solid var(--border); display:block; cursor:zoom-in; }
+.comment-attachment-link { display:inline-flex; align-items:center; gap:5px; font-size:12px; background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:4px 10px; color:var(--accent); text-decoration:none; }
+.comment-attachment-link:hover { background:var(--ground); }
+.comment-input-wrap { display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; }
+.comment-input-row { display:flex; gap:6px; align-items:flex-end; }
 .comment-input {
-  flex:1; border:1px solid var(--border); border-radius:4px; padding:7px 10px; font-size:13px;
+  width:100%; border:1px solid var(--border); border-radius:4px; padding:7px 10px; font-size:13px;
   resize:none; outline:none; background:var(--surface); min-height:36px; max-height:80px; transition:border-color .12s;
 }
 .comment-input:focus { border-color:var(--accent); }
+.comment-input-actions { display:flex; gap:5px; }
+.attach-btn {
+  padding:7px 10px; border:1px solid var(--border); border-radius:4px; background:var(--surface);
+  font-size:14px; flex-shrink:0; line-height:1; color:var(--text2); transition:background .12s;
+}
+.attach-btn:hover { background:var(--ground); color:var(--text); }
 .comment-submit {
   padding:7px 14px; background:var(--accent); color:#fff; border-radius:4px;
   font-size:12px; font-weight:700; white-space:nowrap; flex-shrink:0; transition:opacity .12s;
 }
 .comment-submit:hover { opacity:.88; }
 .comment-submit:disabled { opacity:.4; cursor:not-allowed; }
+.attach-preview { display:flex; align-items:center; gap:6px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:4px; padding:5px 8px; font-size:12px; color:#1D4ED8; }
+.attach-preview-thumb { width:28px; height:28px; border-radius:3px; object-fit:cover; flex-shrink:0; }
+.attach-preview-name { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.attach-preview-size { font-size:10px; color:#93C5FD; flex-shrink:0; }
+.attach-clear { background:none; border:none; color:#93C5FD; font-size:14px; cursor:pointer; padding:0 2px; flex-shrink:0; line-height:1; }
+.attach-clear:hover { color:#1D4ED8; }
 
 /* ── EMPTY STATE ──────────────────────── */
 .empty-state { text-align:center; padding:80px 40px; color:var(--text2); }
@@ -505,6 +522,7 @@ let currentResolvedFindings = [];
 let currentFilter = 'all';
 let currentDevFilter = null;
 let fpPending = null; // { pk, file, title }
+const pendingAttachments = new Map(); // pk → { name, type, size, data: dataURL }
 
 const VERDICT_LABEL = { FAIL:'🔴 FAIL', CONDITIONAL_PASS:'🟡 Conditional PASS', PASS:'🟢 PASS' };
 const STATUS_META = {
@@ -729,14 +747,26 @@ function renderCard(f) {
   const isWont   = f.status === 'wontfix';
 
   const comments = Array.isArray(f.comments) ? f.comments : [];
-  const commentHtml = comments.map(c => `
-    <div class="comment-item">
+  const commentHtml = comments.map(c => {
+    const att = c.attachment;
+    let attHtml = '';
+    if (att) {
+      const isImg = att.type && att.type.startsWith('image/');
+      attHtml = `<div class="comment-attachment">` + (
+        isImg
+          ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
+          : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
+      ) + `</div>`;
+    }
+    return `<div class="comment-item">
       <div class="comment-meta">
         <span class="comment-author">${esc(c.author||'?')}</span>
         <span class="comment-time">${c.timestamp ? new Date(c.timestamp).toLocaleString('ko') : ''}</span>
       </div>
-      <div class="comment-text">${esc(c.text||'')}</div>
-    </div>`).join('');
+      ${c.text ? `<div class="comment-text">${esc(c.text)}</div>` : ''}
+      ${attHtml}
+    </div>`;
+  }).join('');
 
   const statusBtns = Object.entries(STATUS_META).map(([st, meta]) => {
     if (st === 'fixed_confirmed') return ''; // 자동 전환만
@@ -794,10 +824,17 @@ function renderCard(f) {
       <div class="comments-section">
         <div class="comments-title">댓글 ${comments.length ? `(${comments.length})` : ''}</div>
         <div class="comment-list" id="clist-${f.pk}">${commentHtml}</div>
+        <input type="file" id="cfile-${f.pk}" style="display:none" accept="*/*" onchange="onFileChange(${f.pk},this)">
+        <div id="cpreview-${f.pk}" style="display:none"></div>
         <div class="comment-input-row">
-          <textarea class="comment-input" id="cinput-${f.pk}" placeholder="댓글 입력…" rows="1"
-            oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
-          <button class="comment-submit" onclick="addComment(${f.pk})">전송</button>
+          <div class="comment-input-wrap">
+            <textarea class="comment-input" id="cinput-${f.pk}" placeholder="댓글 입력… (첨부파일만도 전송 가능)" rows="1"
+              oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px'"></textarea>
+          </div>
+          <div class="comment-input-actions">
+            <button class="attach-btn" title="파일 첨부" onclick="document.getElementById('cfile-${f.pk}').click()">📎</button>
+            <button class="comment-submit" onclick="addComment(${f.pk})">전송</button>
+          </div>
         </div>
       </div>
     </div>
@@ -860,26 +897,89 @@ async function setStatus(pk, status) {
   }
 }
 
+function fmtSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function onFileChange(pk, input) {
+  const file = input.files[0];
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    toast('파일 크기는 5MB 이하만 첨부 가능합니다.', true);
+    input.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    pendingAttachments.set(pk, { name: file.name, type: file.type, size: file.size, data: e.target.result });
+    renderAttachPreview(pk);
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderAttachPreview(pk) {
+  const att = pendingAttachments.get(pk);
+  const wrap = document.getElementById('cpreview-' + pk);
+  if (!wrap) return;
+  if (!att) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+  const isImg = att.type && att.type.startsWith('image/');
+  wrap.style.display = '';
+  wrap.innerHTML = `<div class="attach-preview">
+    ${isImg ? `<img class="attach-preview-thumb" src="${att.data}">` : '<span style="font-size:18px">📄</span>'}
+    <span class="attach-preview-name">${esc(att.name)}</span>
+    <span class="attach-preview-size">${fmtSize(att.size)}</span>
+    <button class="attach-clear" onclick="clearAttachment(${pk})" title="첨부 취소">✕</button>
+  </div>`;
+}
+
+function clearAttachment(pk) {
+  pendingAttachments.delete(pk);
+  renderAttachPreview(pk);
+  const fi = document.getElementById('cfile-' + pk);
+  if (fi) fi.value = '';
+}
+
+function buildCommentItem(comment) {
+  const att = comment.attachment;
+  let attHtml = '';
+  if (att) {
+    const isImg = att.type && att.type.startsWith('image/');
+    attHtml = `<div class="comment-attachment">` + (
+      isImg
+        ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
+        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
+    ) + `</div>`;
+  }
+  return `<div class="comment-item">
+    <div class="comment-meta">
+      <span class="comment-author">${esc(comment.author)}</span>
+      <span class="comment-time">${comment.timestamp ? new Date(comment.timestamp).toLocaleString('ko') : ''}</span>
+    </div>
+    ${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}
+    ${attHtml}
+  </div>`;
+}
+
 async function addComment(pk) {
   const f = currentFindings.find(x => x.pk === pk);
   if (!f) return;
   const input = document.getElementById('cinput-' + pk);
   const text = input.value.trim();
-  if (!text) return;
+  const att = pendingAttachments.get(pk) || null;
+  if (!text && !att) return;
   const comment = { author: getAuthor(), text, timestamp: new Date().toISOString() };
+  if (att) comment.attachment = att;
   const comments = [...(f.comments || []), comment];
   try {
     await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
     f.comments = comments;
     const list = document.getElementById('clist-' + pk);
-    if (list) list.innerHTML += `<div class="comment-item">
-      <div class="comment-meta">
-        <span class="comment-author">${esc(comment.author)}</span>
-        <span class="comment-time">${new Date(comment.timestamp).toLocaleString('ko')}</span>
-      </div>
-      <div class="comment-text">${esc(comment.text)}</div>
-    </div>`;
+    if (list) list.insertAdjacentHTML('beforeend', buildCommentItem(comment));
     input.value = ''; input.style.height = '';
+    clearAttachment(pk);
     toast('댓글 등록 완료');
   } catch(e) {
     toast('댓글 저장 실패: ' + e.message, true);
