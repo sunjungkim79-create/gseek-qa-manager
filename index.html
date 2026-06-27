@@ -477,6 +477,8 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
     </div>
     <div class="flow-form" id="flowForm">
       <input class="flow-input" id="flowTitle" type="text" placeholder="업무 제목 (Flow에서 복사)" maxlength="200">
+      <input class="flow-input" id="flowAssignee" type="text" placeholder="담당자" maxlength="30">
+      <input class="flow-input" id="flowLink" type="url" placeholder="구글 문서 링크 (선택)">
       <textarea class="flow-input" id="flowDetail" rows="3" placeholder="상세 내용 (선택)"></textarea>
       <div class="flow-form-btns">
         <button class="flow-form-save" onclick="saveFlowTask()">저장</button>
@@ -650,14 +652,16 @@ function toggleFlowForm() {
   const form = document.getElementById('flowForm');
   const open = form.classList.toggle('open');
   if (open) document.getElementById('flowTitle').focus();
-  else { document.getElementById('flowTitle').value = ''; document.getElementById('flowDetail').value = ''; }
+  else { document.getElementById('flowTitle').value = ''; document.getElementById('flowAssignee').value = ''; document.getElementById('flowLink').value = ''; document.getElementById('flowDetail').value = ''; }
 }
 function saveFlowTask() {
   const title = document.getElementById('flowTitle').value.trim();
   if (!title) { document.getElementById('flowTitle').focus(); return; }
+  const assignee = document.getElementById('flowAssignee').value.trim();
   const detail = document.getElementById('flowDetail').value.trim();
   const tasks = loadFlowTasks();
-  tasks.unshift({ id: 'ft-' + Date.now(), title, detail, status: 'open', created: new Date().toLocaleDateString('ko') });
+  const link = document.getElementById('flowLink').value.trim();
+  tasks.unshift({ id: 'ft-' + Date.now(), title, assignee, link, detail, status: 'open', created: new Date().toLocaleDateString('ko') });
   saveFlowTasks(tasks);
   toggleFlowForm();
   renderFlowList();
@@ -689,6 +693,8 @@ function renderFlowList() {
   list.innerHTML = filtered.map(t => `
     <div class="flow-task${t.status === 'done' ? ' done' : ''}" id="ft-${t.id}">
       <div class="flow-task-title">${esc(t.title)}</div>
+      ${t.assignee ? `<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:3px;">👤 ${esc(t.assignee)}</div>` : ''}
+      ${t.link ? `<div style="margin-bottom:4px;"><a href="${esc(t.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none;">🔗 구글 문서</a></div>` : ''}
       ${t.detail ? `<div class="flow-task-detail">${esc(t.detail)}</div>` : ''}
       <div class="flow-task-meta">
         <span class="flow-task-date">${t.created || ''}</span>
