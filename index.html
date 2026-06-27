@@ -477,7 +477,13 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
     </div>
     <div class="flow-form" id="flowForm">
       <input class="flow-input" id="flowTitle" type="text" placeholder="업무 제목 (Flow에서 복사)" maxlength="200">
-      <input class="flow-input" id="flowAssignee" type="text" placeholder="담당자" maxlength="30">
+      <input class="flow-input" id="flowAssignee" type="text" placeholder="담당자" maxlength="30" list="devList">
+      <datalist id="devList">
+        <option value="baekhw-in">
+        <option value="cbg">
+        <option value="Hound">
+        <option value="lsh-in">
+      </datalist>
       <input class="flow-input" id="flowLink" type="url" placeholder="구글 문서 링크 (선택)">
       <textarea class="flow-input" id="flowDetail" rows="3" placeholder="상세 내용 (선택)"></textarea>
       <div class="flow-form-btns">
@@ -542,7 +548,7 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
       <div style="display:flex;gap:10px;">
         <div style="flex:1">
           <label class="modal-label">담당자</label>
-          <input id="fmAssignee" type="text" class="modal-textarea" style="min-height:unset;height:38px;padding:8px 12px" maxlength="30" placeholder="담당자">
+          <input id="fmAssignee" type="text" class="modal-textarea" style="min-height:unset;height:38px;padding:8px 12px" maxlength="30" placeholder="담당자" list="devList">
         </div>
         <div style="flex:2">
           <label class="modal-label">구글 문서 링크</label>
