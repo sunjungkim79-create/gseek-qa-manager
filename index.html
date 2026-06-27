@@ -79,6 +79,8 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 }
 .sb-author-input::placeholder { color:rgba(255,255,255,.3); }
 .sb-author-input:focus { border-color:rgba(59,82,232,.6); }
+@keyframes shake { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-6px)} 40%{transform:translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(4px)} }
+.input-shake { animation:shake .4s ease; border-color:#ef4444 !important; }
 
 .sb-tabs {
   display:flex; border-bottom:1px solid var(--sidebar-bdr); flex-shrink:0;
@@ -996,6 +998,12 @@ async function addComment(pk) {
   const text = input.value.trim();
   const pending = pendingAttachments.get(pk) || null;
   if (!text && !pending) return;
+  if (!document.getElementById('authorInput').value.trim()) {
+    toast('댓글을 작성하기 전에 이름을 입력해주세요.', true);
+    const ai = document.getElementById('authorInput');
+    if (ai) { ai.focus(); ai.classList.add('input-shake'); setTimeout(() => ai.classList.remove('input-shake'), 600); }
+    return;
+  }
   const btn = document.getElementById('csubmit-' + pk);
   if (btn) { btn.disabled = true; btn.textContent = '업로드 중…'; }
   try {
