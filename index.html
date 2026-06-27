@@ -825,7 +825,7 @@ function renderCard(f) {
           </div>
           <div class="comment-input-actions">
             <button class="attach-btn" title="파일 첨부" onclick="document.getElementById('cfile-${f.pk}').click()">📎</button>
-            <button class="comment-submit" onclick="addComment(${f.pk})">전송</button>
+            <button class="comment-submit" id="csubmit-${f.pk}" onclick="addComment(${f.pk})">등록</button>
           </div>
         </div>
       </div>
@@ -904,12 +904,11 @@ function onFileChange(pk, input) {
     input.value = '';
     return;
   }
-  const reader = new FileReader();
-  reader.onload = e => {
-    pendingAttachments.set(pk, { name: file.name, type: file.type, size: file.size, data: e.target.result });
-    renderAttachPreview(pk);
-  };
-  reader.readAsDataURL(file);
+  const prev = pendingAttachments.get(pk);
+  if (prev && prev.previewUrl) URL.revokeObjectURL(prev.previewUrl);
+  const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : null;
+  pendingAttachments.set(pk, { name: file.name, type: file.type, size: file.size, file, previewUrl });
+  renderAttachPreview(pk);
 }
 
 function renderAttachPreview(pk) {
@@ -920,7 +919,7 @@ function renderAttachPreview(pk) {
   const isImg = att.type && att.type.startsWith('image/');
   wrap.style.display = '';
   wrap.innerHTML = `<div class="attach-preview">
-    ${isImg ? `<img class="attach-preview-thumb" src="${att.data}">` : '<span style="font-size:18px">📄</span>'}
+    ${isImg && att.previewUrl ? `<img class="attach-preview-thumb" src="${att.previewUrl}">` : '<span style="font-size:18px">📄</span>'}
     <span class="attach-preview-name">${esc(att.name)}</span>
     <span class="attach-preview-size">${fmtSize(att.size)}</span>
     <button class="attach-clear" onclick="clearAttachment(${pk})" title="첨부 취소">✕</button>
@@ -928,21 +927,49 @@ function renderAttachPreview(pk) {
 }
 
 function clearAttachment(pk) {
+  const att = pendingAttachments.get(pk);
+  if (att && att.previewUrl) URL.revokeObjectURL(att.previewUrl);
   pendingAttachments.delete(pk);
   renderAttachPreview(pk);
   const fi = document.getElementById('cfile-' + pk);
   if (fi) fi.value = '';
 }
 
+async function uploadAttachment(file) {
+  const ext = file.name.includes('.') ? file.name.split('.').pop().toLowerCase() : 'bin';
+  const path = `comments/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const res = await fetch(`${SB_URL}/storage/v1/object/qa-attachments/${path}`, {
+    method: 'POST',
+    headers: {
+      'apikey': SB_KEY,
+      'Authorization': `Bearer ${SB_KEY}`,
+      'Content-Type': file.type || 'application/octet-stream',
+    },
+    body: file,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `HTTP ${res.status}`);
+  }
+  return {
+    name: file.name,
+    type: file.type,
+    size: file.size,
+    url: `${SB_URL}/storage/v1/object/public/qa-attachments/${path}`,
+    path,
+  };
+}
+
 function renderCommentItem(comment, pk, idx) {
   const att = comment.attachment;
   let attHtml = '';
   if (att) {
+    const src = att.url || att.data;
     const isImg = att.type && att.type.startsWith('image/');
     attHtml = `<div class="comment-attachment">` + (
       isImg
-        ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
-        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
+        ? `<img src="${src}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
+        : `<a class="comment-attachment-link" href="${src}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
     ) + `</div>`;
   }
   const isMine = comment.author === getAuthor();
@@ -967,12 +994,18 @@ async function addComment(pk) {
   if (!f) return;
   const input = document.getElementById('cinput-' + pk);
   const text = input.value.trim();
-  const att = pendingAttachments.get(pk) || null;
-  if (!text && !att) return;
-  const comment = { author: getAuthor(), text, timestamp: new Date().toISOString() };
-  if (att) comment.attachment = att;
-  const comments = [...(f.comments || []), comment];
+  const pending = pendingAttachments.get(pk) || null;
+  if (!text && !pending) return;
+  const btn = document.getElementById('csubmit-' + pk);
+  if (btn) { btn.disabled = true; btn.textContent = '업로드 중…'; }
   try {
+    let attachmentMeta = null;
+    if (pending && pending.file) {
+      attachmentMeta = await uploadAttachment(pending.file);
+    }
+    const comment = { author: getAuthor(), text, timestamp: new Date().toISOString() };
+    if (attachmentMeta) comment.attachment = attachmentMeta;
+    const comments = [...(f.comments || []), comment];
     await sbPatch('qa_findings', 'pk=eq.' + pk, { comments });
     f.comments = comments;
     const list = document.getElementById('clist-' + pk);
@@ -982,6 +1015,8 @@ async function addComment(pk) {
     toast('댓글 등록 완료');
   } catch(e) {
     toast('댓글 저장 실패: ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '등록'; }
   }
 }
 
@@ -998,11 +1033,12 @@ function editComment(pk, idx) {
   const att = comment.attachment;
   let attHtml = '';
   if (att) {
+    const src = att.url || att.data;
     const isImg = att.type && att.type.startsWith('image/');
     attHtml = `<div class="comment-attachment" style="margin-top:6px">` + (
       isImg
-        ? `<img src="${att.data}" alt="${esc(att.name)}" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid var(--border)">`
-        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)}</a>`
+        ? `<img src="${src}" alt="${esc(att.name)}" style="max-width:100%;max-height:200px;border-radius:4px;border:1px solid var(--border)">`
+        : `<a class="comment-attachment-link" href="${src}" download="${esc(att.name)}">📎 ${esc(att.name)}</a>`
     ) + `</div>`;
   }
   view.innerHTML = `
@@ -1026,11 +1062,12 @@ function cancelCommentEdit(pk, idx) {
   const att = comment.attachment;
   let attHtml = '';
   if (att) {
+    const src = att.url || att.data;
     const isImg = att.type && att.type.startsWith('image/');
     attHtml = `<div class="comment-attachment">` + (
       isImg
-        ? `<img src="${att.data}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
-        : `<a class="comment-attachment-link" href="${att.data}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
+        ? `<img src="${src}" alt="${esc(att.name)}" onclick="this.style.maxHeight=this.style.maxHeight?'':'none'">`
+        : `<a class="comment-attachment-link" href="${src}" download="${esc(att.name)}">📎 ${esc(att.name)} <span style="font-size:10px;opacity:.7">(${fmtSize(att.size)})</span></a>`
     ) + `</div>`;
   }
   view.innerHTML = `${comment.text ? `<div class="comment-text">${esc(comment.text)}</div>` : ''}${attHtml}`;
