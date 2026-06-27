@@ -524,6 +524,46 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 <div id="toast"></div>
 
 <!-- False Positive Modal -->
+<!-- Flow Task Detail Modal -->
+<div class="modal-overlay" id="flowModal" onclick="if(event.target===this)closeFlowModal()">
+  <div class="modal-box" style="width:520px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+      <h3 style="margin:0">Flow 업무</h3>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span id="fmStatus" style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:10px;background:rgba(156,163,175,.15);color:#6b7280"></span>
+        <button onclick="toggleFlowModalStatus()" style="font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:var(--ground);color:var(--text2);cursor:pointer;" id="fmToggleBtn">상태 전환</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <div>
+        <label class="modal-label">업무 제목 *</label>
+        <input id="fmTitle" type="text" class="modal-textarea" style="min-height:unset;height:38px;padding:8px 12px" maxlength="200" placeholder="업무 제목">
+      </div>
+      <div style="display:flex;gap:10px;">
+        <div style="flex:1">
+          <label class="modal-label">담당자</label>
+          <input id="fmAssignee" type="text" class="modal-textarea" style="min-height:unset;height:38px;padding:8px 12px" maxlength="30" placeholder="담당자">
+        </div>
+        <div style="flex:2">
+          <label class="modal-label">구글 문서 링크</label>
+          <input id="fmLink" type="url" class="modal-textarea" style="min-height:unset;height:38px;padding:8px 12px" placeholder="https://docs.google.com/...">
+        </div>
+      </div>
+      <div>
+        <label class="modal-label">상세 내용</label>
+        <textarea id="fmDetail" class="modal-textarea" rows="5" placeholder="상세 내용을 입력하세요"></textarea>
+      </div>
+    </div>
+    <div class="modal-btns" style="justify-content:space-between">
+      <button class="modal-cancel" style="color:#ef4444;background:#fef2f2;border:1px solid #fca5a5" onclick="deleteFlowTaskFromModal()">삭제</button>
+      <div style="display:flex;gap:8px">
+        <button class="modal-cancel" onclick="closeFlowModal()">취소</button>
+        <button class="modal-confirm" onclick="saveFlowTaskEdit()">저장</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="fpModal">
   <div class="modal-box">
     <h3>오탐 레지스트리 등록</h3>
@@ -681,6 +721,69 @@ function deleteFlowTask(id) {
   saveFlowTasks(tasks);
   renderFlowList();
 }
+/* ── FLOW MODAL ──────────────────────────── */
+let flowModalId = null;
+
+function openFlowModal(id) {
+  const tasks = loadFlowTasks();
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  flowModalId = id;
+  document.getElementById('fmTitle').value    = t.title    || '';
+  document.getElementById('fmAssignee').value = t.assignee || '';
+  document.getElementById('fmLink').value     = t.link     || '';
+  document.getElementById('fmDetail').value   = t.detail   || '';
+  updateFlowModalStatusUI(t.status);
+  document.getElementById('flowModal').classList.add('show');
+  document.getElementById('fmTitle').focus();
+}
+function updateFlowModalStatusUI(status) {
+  const el = document.getElementById('fmStatus');
+  const btn = document.getElementById('fmToggleBtn');
+  if (status === 'done') {
+    el.textContent = '✓ 완료'; el.style.background = 'rgba(34,197,94,.15)'; el.style.color = '#16a34a';
+    btn.textContent = '미처리로 전환';
+  } else {
+    el.textContent = '미처리'; el.style.background = 'rgba(156,163,175,.15)'; el.style.color = '#6b7280';
+    btn.textContent = '완료로 전환';
+  }
+}
+function toggleFlowModalStatus() {
+  const tasks = loadFlowTasks();
+  const t = tasks.find(x => x.id === flowModalId);
+  if (!t) return;
+  t.status = t.status === 'done' ? 'open' : 'done';
+  saveFlowTasks(tasks);
+  updateFlowModalStatusUI(t.status);
+  renderFlowList();
+}
+function saveFlowTaskEdit() {
+  const title = document.getElementById('fmTitle').value.trim();
+  if (!title) { document.getElementById('fmTitle').focus(); return; }
+  const tasks = loadFlowTasks();
+  const t = tasks.find(x => x.id === flowModalId);
+  if (!t) return;
+  t.title    = title;
+  t.assignee = document.getElementById('fmAssignee').value.trim();
+  t.link     = document.getElementById('fmLink').value.trim();
+  t.detail   = document.getElementById('fmDetail').value.trim();
+  saveFlowTasks(tasks);
+  renderFlowList();
+  closeFlowModal();
+  toast('업무 수정 완료');
+}
+function deleteFlowTaskFromModal() {
+  if (!confirm('이 업무를 삭제하시겠습니까?')) return;
+  const tasks = loadFlowTasks().filter(x => x.id !== flowModalId);
+  saveFlowTasks(tasks);
+  renderFlowList();
+  closeFlowModal();
+}
+function closeFlowModal() {
+  document.getElementById('flowModal').classList.remove('show');
+  flowModalId = null;
+}
+
 function renderFlowList() {
   const tasks = loadFlowTasks();
   const filtered = flowFilter === 'all' ? tasks : tasks.filter(t => t.status === flowFilter);
@@ -691,15 +794,14 @@ function renderFlowList() {
     return;
   }
   list.innerHTML = filtered.map(t => `
-    <div class="flow-task${t.status === 'done' ? ' done' : ''}" id="ft-${t.id}">
+    <div class="flow-task${t.status === 'done' ? ' done' : ''}" id="ft-${t.id}" onclick="openFlowModal('${t.id}')" style="cursor:pointer">
       <div class="flow-task-title">${esc(t.title)}</div>
       ${t.assignee ? `<div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:3px;">👤 ${esc(t.assignee)}</div>` : ''}
-      ${t.link ? `<div style="margin-bottom:4px;"><a href="${esc(t.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none;">🔗 구글 문서</a></div>` : ''}
-      ${t.detail ? `<div class="flow-task-detail">${esc(t.detail)}</div>` : ''}
-      <div class="flow-task-meta">
+      ${t.link ? `<div style="margin-bottom:4px;" onclick="event.stopPropagation()"><a href="${esc(t.link)}" target="_blank" style="font-size:11px;color:#60a5fa;text-decoration:none;">🔗 구글 문서</a></div>` : ''}
+      ${t.detail ? `<div class="flow-task-detail" style="-webkit-line-clamp:2;display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden">${esc(t.detail)}</div>` : ''}
+      <div class="flow-task-meta" onclick="event.stopPropagation()">
         <span class="flow-task-date">${t.created || ''}</span>
         <button class="flow-task-toggle" onclick="toggleFlowTask('${t.id}')">${t.status === 'done' ? '✓ 완료' : '미처리'}</button>
-        <button class="flow-task-del" onclick="deleteFlowTask('${t.id}')" title="삭제">✕</button>
       </div>
     </div>`).join('');
 }
