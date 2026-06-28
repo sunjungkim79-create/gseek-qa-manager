@@ -376,6 +376,22 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 .empty-state .icon { font-size:36px; margin-bottom:12px; }
 .empty-state p { font-size:14px; line-height:1.7; }
 
+/* ── DASHBOARDS ───────────────────────── */
+.dash-panel { flex:1; overflow-y:auto; padding:28px 28px 40px; }
+.dash-panel::-webkit-scrollbar { width:6px; }
+.dash-panel::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+.dash-heading { font-size:20px; font-weight:800; letter-spacing:-.02em; color:var(--text); margin-bottom:4px; }
+.dash-sub { font-size:13px; color:var(--text2); margin-bottom:24px; }
+.dash-stat-grid { display:grid; gap:12px; margin-bottom:20px; }
+.dash-stat-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:18px 20px; }
+.dsc-value { font-size:28px; font-weight:800; line-height:1; letter-spacing:-.02em; }
+.dsc-label { font-size:11px; font-weight:600; color:var(--text2); margin-top:5px; text-transform:uppercase; letter-spacing:.06em; }
+.dsc-accent { color:var(--accent); } .dsc-high { color:var(--high); } .dsc-med { color:var(--med); } .dsc-pass { color:var(--pass); }
+.dash-section { background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:18px 20px; margin-bottom:16px; }
+.dash-section-title { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); margin-bottom:14px; }
+.dash-row-link { display:flex; align-items:center; gap:10px; padding:7px 8px; border-radius:5px; cursor:pointer; transition:background .12s; }
+.dash-row-link:hover { background:var(--ground); }
+
 /* ── TOAST ────────────────────────────── */
 #toast {
   position:fixed; bottom:24px; right:24px; background:var(--text); color:#fff;
@@ -506,6 +522,11 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
 </aside>
 
 <div class="main">
+  <div id="dashReports" class="dash-panel">
+    <div class="dash-heading">QA 현황 대시보드</div>
+    <div class="dash-sub">로딩 중…</div>
+  </div>
+  <div id="dashFlow" class="dash-panel" style="display:none"></div>
   <div class="main-toolbar" id="toolbar" style="display:none">
     <span class="filter-label">필터</span>
     <button class="filter-btn active" onclick="applyFilter(this,'all')">전체</button>
@@ -519,12 +540,7 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
     <button class="filter-btn" onclick="applyFilter(this,'st:false_positive')">오탐</button>
     <div class="tb-right" id="progressText"></div>
   </div>
-  <div class="main-content" id="mainContent">
-    <div class="empty-state">
-      <div class="icon">🔍</div>
-      <p>왼쪽에서 QA 리포트를 선택하세요.</p>
-    </div>
-  </div>
+  <div class="main-content" id="mainContent" style="display:none"></div>
 </div>
 
 <div id="toast"></div>
@@ -638,6 +654,9 @@ function saveConfig() {
 }
 
 /* ── STATE ───────────────────────────────── */
+let currentTab = 'reports';
+let allReportsCache = [];
+let allFindingsCache = [];
 let currentReport = null;
 let currentFindings = [];
 let currentResolvedFindings = [];
@@ -679,12 +698,26 @@ function getAuthor() {
 }
 
 /* ── TAB SWITCH ──────────────────────────── */
+function updateMainView() {
+  const showReport     = currentTab === 'reports' && !!currentReport;
+  const showReportDash = currentTab === 'reports' && !currentReport;
+  const showFlowDash   = currentTab === 'flow';
+  document.getElementById('dashReports').style.display = showReportDash ? '' : 'none';
+  document.getElementById('dashFlow').style.display    = showFlowDash   ? '' : 'none';
+  document.getElementById('toolbar').style.display     = showReport     ? '' : 'none';
+  document.getElementById('mainContent').style.display = showReport     ? '' : 'none';
+  if (showReportDash) renderReportsDashboard();
+  if (showFlowDash)   renderFlowDashboard();
+}
+
 function switchTab(tab) {
+  currentTab = tab;
   document.getElementById('panelReports').style.display = tab === 'reports' ? '' : 'none';
   document.getElementById('panelFp').style.display      = tab === 'fp'      ? '' : 'none';
   document.getElementById('panelFlow').style.display    = tab === 'flow'    ? '' : 'none';
   document.getElementById('tabReports').classList.toggle('active', tab === 'reports');
   document.getElementById('tabFlow').classList.toggle('active', tab === 'flow');
+  updateMainView();
   if (tab === 'flow') renderFlowList(true);
 }
 
@@ -697,6 +730,7 @@ async function fetchFlowTasks() {
   try {
     const all = await sbGet('flow_tasks?order=created_at.desc');
     flowCache = Array.isArray(all) ? all : [];
+    if (currentTab === 'flow') renderFlowDashboard();
   } catch(e) {
     flowCache = [];
     const list = document.getElementById('flowList');
@@ -848,12 +882,223 @@ function refreshAll() {
   if (currentReport) loadReport(currentReport.id);
 }
 
+/* ── DASHBOARD RENDERERS ─────────────────── */
+function verdictBar(label, count, total, color) {
+  const pct = total > 0 ? Math.round(count / total * 100) : 0;
+  return `<div style="display:flex;align-items:center;gap:10px">
+    <span style="font-size:11px;font-weight:700;color:${color};width:72px;flex-shrink:0">${label}</span>
+    <div style="flex:1;background:var(--ground);border-radius:3px;height:7px;overflow:hidden">
+      <div style="height:100%;background:${color};border-radius:3px;width:${pct}%"></div>
+    </div>
+    <span style="font-size:12px;font-weight:800;color:${color};width:22px;text-align:right">${count}</span>
+  </div>`;
+}
+
+function renderReportsDashboard() {
+  const panel = document.getElementById('dashReports');
+  if (!panel || panel.style.display === 'none') return;
+  const reports  = allReportsCache;
+  const findings = allFindingsCache;
+  if (!reports.length) {
+    panel.innerHTML = `<div class="dash-heading">QA 현황 대시보드</div><div class="dash-sub">아직 QA 리포트가 없습니다.</div>`;
+    return;
+  }
+  const totalR   = reports.length;
+  const openF    = findings.filter(f => ['open','reviewing'].includes(f.status)).length;
+  const highF    = findings.filter(f => f.severity === 'HIGH' && f.status !== 'false_positive').length;
+  const passR    = reports.filter(r => r.verdict === 'PASS').length;
+  const failR    = reports.filter(r => r.verdict === 'FAIL').length;
+  const condR    = reports.filter(r => r.verdict === 'CONDITIONAL_PASS').length;
+  const passRate = Math.round(passR / totalR * 100);
+
+  const devMap = {};
+  for (const f of findings) {
+    if (!f.developer) continue;
+    if (!devMap[f.developer]) devMap[f.developer] = { open:0, high:0 };
+    if (['open','reviewing'].includes(f.status)) devMap[f.developer].open++;
+    if (f.severity === 'HIGH' && f.status !== 'false_positive') devMap[f.developer].high++;
+  }
+  const devList  = Object.entries(devMap).sort((a,b) => b[1].open - a[1].open);
+  const maxDOpen = devList.length ? devList[0][1].open : 1;
+
+  panel.innerHTML = `
+    <div class="dash-heading">QA 현황 대시보드</div>
+    <div class="dash-sub">전체 ${totalR}개 리포트 · 이슈 ${findings.length}건 누적</div>
+
+    <div class="dash-stat-grid" style="grid-template-columns:repeat(4,1fr)">
+      <div class="dash-stat-card">
+        <div class="dsc-value dsc-accent">${totalR}</div>
+        <div class="dsc-label">총 리포트</div>
+      </div>
+      <div class="dash-stat-card">
+        <div class="dsc-value ${openF > 0 ? 'dsc-med' : 'dsc-pass'}">${openF}</div>
+        <div class="dsc-label">미검토 이슈</div>
+      </div>
+      <div class="dash-stat-card">
+        <div class="dsc-value ${highF > 0 ? 'dsc-high' : 'dsc-pass'}">${highF}</div>
+        <div class="dsc-label">HIGH 이슈</div>
+      </div>
+      <div class="dash-stat-card">
+        <div class="dsc-value dsc-pass">${passRate}%</div>
+        <div class="dsc-label">PASS율</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div class="dash-section" style="margin-bottom:0">
+        <div class="dash-section-title">판정 분포</div>
+        <div style="display:flex;flex-direction:column;gap:11px">
+          ${verdictBar('FAIL', failR, totalR, 'var(--high)')}
+          ${verdictBar('조건부 PASS', condR, totalR, 'var(--med)')}
+          ${verdictBar('PASS', passR, totalR, 'var(--pass)')}
+        </div>
+      </div>
+      <div class="dash-section" style="margin-bottom:0">
+        <div class="dash-section-title">개발자별 미검토</div>
+        ${devList.length ? `<div style="display:flex;flex-direction:column;gap:9px">
+          ${devList.slice(0,5).map(([dev,s]) => `
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:12px;font-weight:600;width:72px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(dev)}</span>
+              <div style="flex:1;background:var(--ground);border-radius:3px;height:6px;overflow:hidden">
+                <div style="height:100%;border-radius:3px;background:${s.high > 0 ? 'var(--high)' : 'var(--accent)'};width:${Math.round(s.open / maxDOpen * 100)}%"></div>
+              </div>
+              <span style="font-size:11px;color:var(--text2);width:34px;text-align:right">${s.open}건</span>
+            </div>`).join('')}
+        </div>` : `<div style="font-size:12px;color:var(--pass)">미검토 이슈 없음 ✅</div>`}
+      </div>
+    </div>
+
+    <div class="dash-section">
+      <div class="dash-section-title">최근 리포트</div>
+      <div style="display:flex;flex-direction:column">
+        ${reports.slice(0, 8).map(r => {
+          const rf     = findings.filter(f => f.report_id === r.id);
+          const rOpen  = rf.filter(f => ['open','reviewing'].includes(f.status)).length;
+          const rHigh  = rf.filter(f => f.severity === 'HIGH' && f.status !== 'false_positive').length;
+          const vColor = r.verdict === 'FAIL' ? 'var(--high)' : r.verdict === 'CONDITIONAL_PASS' ? 'var(--med)' : 'var(--pass)';
+          const vLabel = r.verdict === 'FAIL' ? '🔴 FAIL' : r.verdict === 'CONDITIONAL_PASS' ? '🟡 조건부' : '🟢 PASS';
+          const repoBg  = r.repo === 'firb-enterprise' ? 'rgba(124,58,237,.12)' : 'rgba(59,82,232,.1)';
+          const repoClr = r.repo === 'firb-enterprise' ? '#7C3AED' : 'var(--accent)';
+          const repoLbl = r.repo === 'firb-enterprise' ? '관리자' : '프론트';
+          return `<div class="dash-row-link" onclick="loadReport('${r.id}')">
+            <span style="font-size:12px;font-weight:700;width:86px;flex-shrink:0">${r.date}</span>
+            <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${repoBg};color:${repoClr};flex-shrink:0">${repoLbl}</span>
+            <span style="font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.period)}</span>
+            ${rHigh ? `<span style="font-size:11px;font-weight:700;color:var(--high);background:var(--high-bg);padding:1px 6px;border-radius:3px">${rHigh} HIGH</span>` : ''}
+            ${rOpen ? `<span style="font-size:11px;color:var(--text2);background:var(--ground);padding:1px 6px;border-radius:3px">${rOpen} 미검토</span>` : ''}
+            <span style="font-size:12px;font-weight:700;color:${vColor};flex-shrink:0">${vLabel}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+}
+
+function renderFlowDashboard() {
+  const panel = document.getElementById('dashFlow');
+  if (!panel || panel.style.display === 'none') return;
+  const tasks = flowCache;
+  if (!tasks.length) {
+    panel.innerHTML = `<div class="dash-heading">Flow 업무 현황</div>
+      <div class="dash-sub">왼쪽 패널에서 업무를 추가하면 여기서 현황을 볼 수 있습니다.</div>
+      <div class="empty-state"><div class="icon" style="font-size:28px">📋</div><p>등록된 업무가 없습니다.</p></div>`;
+    return;
+  }
+  const total    = tasks.length;
+  const open     = tasks.filter(t => t.status !== 'done').length;
+  const done     = tasks.filter(t => t.status === 'done').length;
+  const doneRate = Math.round(done / total * 100);
+  const circ     = 87.96; // 2π×14
+
+  const aMap = {};
+  for (const t of tasks) {
+    const a = t.assignee || '미지정';
+    if (!aMap[a]) aMap[a] = { open:0, done:0 };
+    if (t.status === 'done') aMap[a].done++; else aMap[a].open++;
+  }
+  const aList   = Object.entries(aMap).sort((a,b) => b[1].open - a[1].open);
+  const maxAOpen = aList.length ? Math.max(1, aList[0][1].open) : 1;
+
+  const openTasks  = tasks.filter(t => t.status !== 'done');
+  const checkFirst = [...openTasks.filter(t => t.check_items), ...openTasks.filter(t => !t.check_items)].slice(0, 7);
+
+  panel.innerHTML = `
+    <div class="dash-heading">Flow 업무 현황</div>
+    <div class="dash-sub">Flow 언급 업무 ${total}건 · 미처리 ${open}건</div>
+
+    <div class="dash-stat-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="dash-stat-card">
+        <div class="dsc-value dsc-accent">${total}</div>
+        <div class="dsc-label">전체 업무</div>
+      </div>
+      <div class="dash-stat-card">
+        <div class="dsc-value ${open > 0 ? 'dsc-med' : 'dsc-pass'}">${open}</div>
+        <div class="dsc-label">미처리</div>
+      </div>
+      <div class="dash-stat-card">
+        <div class="dsc-value dsc-pass">${doneRate}%</div>
+        <div class="dsc-label">완료율</div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:180px 1fr;gap:16px;margin-bottom:16px">
+      <div class="dash-section" style="margin-bottom:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+        <div style="position:relative;width:110px;height:110px">
+          <svg viewBox="0 0 36 36" style="transform:rotate(-90deg);width:110px;height:110px">
+            <circle cx="18" cy="18" r="14" fill="none" stroke="var(--ground)" stroke-width="3.2"/>
+            <circle cx="18" cy="18" r="14" fill="none" stroke="var(--pass)" stroke-width="3.2"
+              stroke-dasharray="${(doneRate * circ / 100).toFixed(2)} ${circ}" stroke-linecap="round"/>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center">
+            <div style="font-size:20px;font-weight:800;color:var(--pass);line-height:1">${doneRate}%</div>
+            <div style="font-size:10px;color:var(--text2);margin-top:2px">완료율</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:20px;font-size:12px;text-align:center">
+          <div><div style="font-weight:800;color:var(--pass);font-size:16px">${done}</div><div style="color:var(--text2);margin-top:2px">완료</div></div>
+          <div><div style="font-weight:800;color:var(--med);font-size:16px">${open}</div><div style="color:var(--text2);margin-top:2px">미처리</div></div>
+        </div>
+      </div>
+      <div class="dash-section" style="margin-bottom:0">
+        <div class="dash-section-title">담당자별 현황</div>
+        <div style="display:flex;flex-direction:column;gap:9px">
+          ${aList.map(([a,s]) => `
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:12px;font-weight:600;width:70px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a)}</span>
+              <div style="flex:1;background:var(--ground);border-radius:3px;height:6px;overflow:hidden">
+                <div style="height:100%;border-radius:3px;background:${s.open > 0 ? 'var(--accent)' : 'var(--pass)'};width:${s.open > 0 ? Math.round(s.open / maxAOpen * 100) : 100}%"></div>
+              </div>
+              <span style="font-size:11px;width:58px;text-align:right;color:${s.open > 0 ? 'var(--text)' : 'var(--pass)'}">
+                ${s.open > 0 ? `미처리 ${s.open}` : '✓ 완료'}
+              </span>
+            </div>`).join('')}
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-section">
+      <div class="dash-section-title">미처리 업무${openTasks.filter(t=>t.check_items).length ? ` — 확인필요 ${openTasks.filter(t=>t.check_items).length}건 우선` : ''}</div>
+      ${checkFirst.length ? `<div style="display:flex;flex-direction:column">
+        ${checkFirst.map(t => `
+          <div class="dash-row-link" onclick="openFlowModal('${t.id}')">
+            ${t.check_items
+              ? `<span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:#FEF3C7;color:#D97706;flex-shrink:0;white-space:nowrap">확인필요</span>`
+              : `<span style="width:46px;flex-shrink:0"></span>`}
+            <span style="font-size:12px;font-weight:600;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(t.title)}</span>
+            ${t.assignee ? `<span style="font-size:11px;color:var(--text2);flex-shrink:0">👤 ${esc(t.assignee)}</span>` : ''}
+          </div>`).join('')}
+      </div>` : `<div style="font-size:13px;color:var(--pass);text-align:center;padding:20px 0;font-weight:600">✅ 모든 업무가 완료되었습니다!</div>`}
+    </div>`;
+}
+
 /* ── REPORT LIST ─────────────────────────── */
 async function loadReportList() {
   try {
     const reports = await sbGet('qa_reports?order=uploaded_at.desc&limit=100');
-    const findings = await sbGet('qa_findings?select=report_id,severity,status&limit=5000');
+    const findings = await sbGet('qa_findings?select=report_id,severity,status,developer&limit=5000');
+    allReportsCache = reports;
+    allFindingsCache = findings;
     renderReportList(reports, findings);
+    if (currentTab === 'reports' && !currentReport) renderReportsDashboard();
     document.getElementById('sbLoading').style.display = 'none';
   } catch(e) {
     document.getElementById('sbLoading').textContent = '로드 실패: ' + e.message;
@@ -923,7 +1168,7 @@ async function loadReport(id) {
         return !f.report_id.startsWith('qa-ent-'); // firb-enterprise-user (qa-user-* 및 레거시 qa-*)
       });
     } catch(_) { currentResolvedFindings = []; }
-    document.getElementById('toolbar').style.display = '';
+    updateMainView();
     renderReport();
     // refresh sidebar active state
     document.querySelectorAll('.report-item').forEach(el => {
