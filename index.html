@@ -596,7 +596,10 @@ function getHeaders(extra={}) {
   };
 }
 async function sbGet(path) {
-  const r = await fetch(SB_URL + '/rest/v1/' + path, { headers: getHeaders() });
+  const sep = path.includes('?') ? '&' : '?';
+  const r = await fetch(SB_URL + '/rest/v1/' + path + sep + 'apikey=' + SB_KEY, {
+    headers: { 'Authorization': 'Bearer ' + SB_KEY, 'Accept': 'application/json' }
+  });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
