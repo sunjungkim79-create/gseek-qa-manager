@@ -485,6 +485,7 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
       </datalist>
       <input class="flow-input" id="flowLink" type="url" placeholder="구글 문서 링크 (선택)">
       <textarea class="flow-input" id="flowDetail" rows="3" placeholder="상세 내용 (선택)"></textarea>
+      <textarea class="flow-input" id="flowCheckItems" rows="2" placeholder="확인필요사항 (선택)"></textarea>
       <div class="flow-form-btns">
         <button class="flow-form-save" onclick="saveFlowTask()">저장</button>
         <button class="flow-form-cancel" onclick="toggleFlowForm()">취소</button>
@@ -556,7 +557,11 @@ code { font-family:'Courier New',monospace; font-size:12px; background:rgba(0,0,
       </div>
       <div>
         <label class="modal-label">상세 내용</label>
-        <textarea id="fmDetail" class="modal-textarea" rows="5" placeholder="상세 내용을 입력하세요"></textarea>
+        <textarea id="fmDetail" class="modal-textarea" rows="4" placeholder="상세 내용을 입력하세요"></textarea>
+      </div>
+      <div>
+        <label class="modal-label">확인필요사항</label>
+        <textarea id="fmCheckItems" class="modal-textarea" rows="3" placeholder="작업 전 확인이 필요한 사항을 입력하세요"></textarea>
       </div>
     </div>
     <div class="modal-btns" style="justify-content:space-between">
@@ -702,7 +707,7 @@ function toggleFlowForm() {
   const form = document.getElementById('flowForm');
   const open = form.classList.toggle('open');
   if (open) document.getElementById('flowTitle').focus();
-  else { document.getElementById('flowTitle').value = ''; document.getElementById('flowAssignee').value = ''; document.getElementById('flowLink').value = ''; document.getElementById('flowDetail').value = ''; }
+  else { document.getElementById('flowTitle').value = ''; document.getElementById('flowAssignee').value = ''; document.getElementById('flowLink').value = ''; document.getElementById('flowDetail').value = ''; document.getElementById('flowCheckItems').value = ''; }
 }
 async function saveFlowTask() {
   const title = document.getElementById('flowTitle').value.trim();
@@ -710,7 +715,8 @@ async function saveFlowTask() {
   const assignee = document.getElementById('flowAssignee').value.trim();
   const link = document.getElementById('flowLink').value.trim();
   const detail = document.getElementById('flowDetail').value.trim();
-  const task = { id: 'ft-' + Date.now(), title, assignee, link, detail, status: 'open', created: new Date().toLocaleDateString('ko') };
+  const check_items = document.getElementById('flowCheckItems').value.trim();
+  const task = { id: 'ft-' + Date.now(), title, assignee, link, detail, check_items, status: 'open', created: new Date().toLocaleDateString('ko') };
   try {
     await sbPost('flow_tasks', task);
     toggleFlowForm();
@@ -750,7 +756,8 @@ function openFlowModal(id) {
   document.getElementById('fmTitle').value    = t.title    || '';
   document.getElementById('fmAssignee').value = t.assignee || '';
   document.getElementById('fmLink').value     = t.link     || '';
-  document.getElementById('fmDetail').value   = t.detail   || '';
+  document.getElementById('fmDetail').value      = t.detail      || '';
+  document.getElementById('fmCheckItems').value = t.check_items || '';
   updateFlowModalStatusUI(t.status);
   document.getElementById('flowModal').classList.add('show');
   document.getElementById('fmTitle').focus();
@@ -782,9 +789,10 @@ async function saveFlowTaskEdit() {
   if (!title) { document.getElementById('fmTitle').focus(); return; }
   const patch = {
     title,
-    assignee: document.getElementById('fmAssignee').value.trim(),
-    link:     document.getElementById('fmLink').value.trim(),
-    detail:   document.getElementById('fmDetail').value.trim(),
+    assignee:    document.getElementById('fmAssignee').value.trim(),
+    link:        document.getElementById('fmLink').value.trim(),
+    detail:      document.getElementById('fmDetail').value.trim(),
+    check_items: document.getElementById('fmCheckItems').value.trim(),
   };
   try {
     await sbPatch('flow_tasks', 'id=eq.' + flowModalId, patch);
