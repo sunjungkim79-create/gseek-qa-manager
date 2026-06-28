@@ -597,9 +597,7 @@ function getHeaders(extra={}) {
 }
 async function sbGet(path) {
   const sep = path.includes('?') ? '&' : '?';
-  const r = await fetch(SB_URL + '/rest/v1/' + path + sep + 'apikey=' + SB_KEY, {
-    headers: { 'Authorization': 'Bearer ' + SB_KEY, 'Accept': 'application/json' }
-  });
+  const r = await fetch(SB_URL + '/rest/v1/' + path + sep + 'apikey=' + SB_KEY);
   if (!r.ok) throw new Error(await r.text());
   return r.json();
 }
@@ -695,11 +693,10 @@ async function fetchFlowTasks() {
   try {
     const all = await sbGet('flow_tasks?order=created_at.desc');
     flowCache = Array.isArray(all) ? all : [];
-    console.log('[Flow] 로드 완료:', flowCache.length + '건');
   } catch(e) {
     flowCache = [];
-    console.error('[Flow] 로드 실패:', e);
-    toast('Flow 업무 로딩 실패: ' + e.message, true);
+    const list = document.getElementById('flowList');
+    if (list) list.innerHTML = `<div style="padding:12px;color:#f87171;font-size:12px;">⚠️ 로드 실패: ${e.message}</div>`;
   }
 }
 function toggleFlowForm() {
