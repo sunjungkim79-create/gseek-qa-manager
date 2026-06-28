@@ -680,7 +680,7 @@ function switchTab(tab) {
   document.getElementById('tabReports').classList.toggle('active', tab === 'reports');
   document.getElementById('tabFp').classList.toggle('active', tab === 'fp');
   document.getElementById('tabFlow').classList.toggle('active', tab === 'flow');
-  if (tab === 'flow') renderFlowList();
+  if (tab === 'flow') renderFlowList(true);
 }
 
 /* ── FLOW TASKS (localStorage) ───────────── */
@@ -691,9 +691,11 @@ let flowCache = [];
 async function fetchFlowTasks() {
   try {
     const all = await sbGet('flow_tasks?order=created_at.desc');
-    flowCache = all || [];
+    flowCache = Array.isArray(all) ? all : [];
+    console.log('[Flow] 로드 완료:', flowCache.length + '건');
   } catch(e) {
     flowCache = [];
+    console.error('[Flow] 로드 실패:', e);
     toast('Flow 업무 로딩 실패: ' + e.message, true);
   }
 }
@@ -808,10 +810,10 @@ function closeFlowModal() {
   flowModalId = null;
 }
 
-async function renderFlowList() {
+async function renderFlowList(force) {
   const list = document.getElementById('flowList');
   if (!list) return;
-  if (!flowCache.length) {
+  if (force || !flowCache.length) {
     list.innerHTML = `<div style="padding:10px 12px;color:rgba(255,255,255,.3);font-size:12px;">로딩 중…</div>`;
     await fetchFlowTasks();
   }
