@@ -983,6 +983,7 @@ function renderReportsDashboard() {
           return `<div class="dash-row-link" onclick="loadReport('${r.id}')">
             <span style="font-size:12px;font-weight:700;width:86px;flex-shrink:0">${r.date}</span>
             <span style="font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px;background:${repoBg};color:${repoClr};flex-shrink:0">${repoLbl}</span>
+            ${aiAgentBadge(r.id, '10px')}
             <span style="font-size:11px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.period)}</span>
             ${rHigh ? `<span style="font-size:11px;font-weight:700;color:var(--high);background:var(--high-bg);padding:1px 6px;border-radius:3px">${rHigh} HIGH</span>` : ''}
             ${rOpen ? `<span style="font-size:11px;color:var(--text2);background:var(--ground);padding:1px 6px;border-radius:3px">${rOpen} 미검토</span>` : ''}
@@ -1090,6 +1091,17 @@ function renderFlowDashboard() {
     </div>`;
 }
 
+/* ── AI AGENT HELPER ─────────────────────── */
+function aiAgent(id) {
+  if (id.includes('-gemini-')) return { name:'Gemini', color:'#1A73E8', bg:'rgba(26,115,232,.18)' };
+  if (id.includes('-codex-'))  return { name:'Codex',  color:'#10A37F', bg:'rgba(16,163,127,.18)' };
+  return { name:'Claude', color:'#3B52E8', bg:'rgba(59,82,232,.2)' };
+}
+function aiAgentBadge(id, size='9px') {
+  const a = aiAgent(id);
+  return `<span style="font-size:${size};font-weight:700;padding:1px 5px;border-radius:3px;background:${a.bg};color:${a.color}">${a.name}</span>`;
+}
+
 /* ── REPORT LIST ─────────────────────────── */
 async function loadReportList() {
   try {
@@ -1132,6 +1144,7 @@ function renderReportList(reports, findings) {
     return `<div class="report-item${active}" onclick="loadReport('${r.id}')">
       <div class="ri-date">${r.date}
         <span class="ri-badge" style="background:${repoBg};color:#fff;font-size:9px">${repoLabel}</span>
+        ${aiAgentBadge(r.id)}
         <span class="ri-badge ${vc}">${vt}</span>
       </div>
       <div class="ri-period">${r.period}</div>
