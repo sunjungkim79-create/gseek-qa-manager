@@ -679,7 +679,6 @@ function switchTab(tab) {
   document.getElementById('panelFp').style.display      = tab === 'fp'      ? '' : 'none';
   document.getElementById('panelFlow').style.display    = tab === 'flow'    ? '' : 'none';
   document.getElementById('tabReports').classList.toggle('active', tab === 'reports');
-  document.getElementById('tabFp').classList.toggle('active', tab === 'fp');
   document.getElementById('tabFlow').classList.toggle('active', tab === 'flow');
   if (tab === 'flow') renderFlowList(true);
 }
